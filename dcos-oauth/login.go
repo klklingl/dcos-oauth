@@ -17,6 +17,10 @@ import (
 	"github.com/dcos/dcos-oauth/common"
 )
 
+const (
+	defaultLocalUserPassword = "admin"
+)
+
 type loginRequest struct {
 	Uid string `json:"uid,omitempty"`
 
@@ -27,6 +31,104 @@ type loginRequest struct {
 
 type loginResponse struct {
 	Token string `json:"token,omitempty"`
+}
+
+func verifyLocalUser(ctx context.Context, token jose.JWT) error {
+	claims, err := token.Claims()
+	if err != nil {
+		return err
+	}
+
+	uid, ok, err := claims.StringClaim("email")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("Invalid email claim for LocalUser")
+	}
+
+	if !isLocalUser(ctx, uid) {
+		return fmt.Errorf("No matching LocalUser %s", uid)
+	}
+	return nil
+}
+
+func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
+	//TODO: Is there a way to set a TTL for the header
+	//TODO: Does there need a way to inject an initial set of users and passwords?
+
+	uid, password, ok := r.BasicAuth()
+	if !ok {
+		w.Header().Set("WWW-Authenticate", `Basic realm="ETHOS CLUSTER"`)
+		return common.NewHttpError("Not authorized for this Ethos cluster", http.StatusUnauthorized)
+	}
+
+	if hasLocalUsers(ctx) && isLocalUser(ctx, uid) {
+		//TODO: Check for a matching password
+		isMatchingPassword := false
+		if uid == defaultLocalUser {
+			isMatchingPassword = password == defaultLocalUserPassword // Eventually get the password match from somewhere else
+		} else {
+			isMatchingPassword = true // For now just being in the list is good enough
+		}
+		if !isMatchingPassword {
+			w.Header().Set("WWW-Authenticate", `Basic realm="ETHOS CLUSTER"`)
+			return common.NewHttpError("Invalid username or password", http.StatusUnauthorized)
+		}
+	} else if uid != defaultLocalUser || password != defaultLocalUserPassword {
+		//TODO: Add defaultLocalUser to the LocalUsers list the first time it gets here
+		w.Header().Set("WWW-Authenticate", `Basic realm="ETHOS CLUSTER"`)
+		return common.NewHttpError("Invalid username or password", http.StatusUnauthorized)
+	}
+
+	claims := make(jose.Claims)
+	claims.Add("uid", uid)
+	claims.Add("email", uid)
+
+	secretKey, _ := ctx.Value("secret-key").([]byte)
+
+	clusterToken, err := jose.NewSignedJWT(claims, jose.NewSignerHMAC("secret", secretKey))
+	if err != nil {
+		return common.NewHttpError("JWT creation error", http.StatusInternalServerError)
+	}
+	encodedClusterToken := clusterToken.Encode()
+
+	const cookieMaxAge = 388800
+	// required for IE 6, 7 and 8
+	expiresTime := time.Now().Add(cookieMaxAge * time.Second)
+
+	authCookie := &http.Cookie{
+		Name:     "dcos-acs-auth-cookie",
+		Value:    encodedClusterToken,
+		Path:     "/",
+		HttpOnly: true,
+		Expires:  expiresTime,
+		MaxAge:   cookieMaxAge,
+	}
+	http.SetCookie(w, authCookie)
+
+	user := User{
+		Uid:         uid,
+		Description: uid,
+		IsRemote:    false,
+	}
+	userBytes, err := json.Marshal(user)
+	if err != nil {
+		log.Printf("Marshal: %v", err)
+		return common.NewHttpError("JSON marshalling failed", http.StatusInternalServerError)
+	}
+	infoCookie := &http.Cookie{
+		Name:    "dcos-acs-info-cookie",
+		Value:   base64.URLEncoding.EncodeToString(userBytes),
+		Path:    "/",
+		Expires: expiresTime,
+		MaxAge:  cookieMaxAge,
+	}
+	http.SetCookie(w, infoCookie)
+
+	json.NewEncoder(w).Encode(loginResponse{Token: encodedClusterToken})
+
+	return nil
 }
 
 func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
@@ -67,8 +169,10 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 
 	err = oidcCli.VerifyJWT(token)
 	if err != nil {
-		log.Printf("VerifyJWT: %v", err)
-		return common.NewHttpError("JWT verification failed", http.StatusUnauthorized)
+		if err2 := verifyLocalUser(ctx, token); err2 != nil {
+			log.Printf("VerifyJWT: %v; %v", err, err2)
+			return common.NewHttpError("JWT verification failed", http.StatusUnauthorized)
+		}
 	}
 
 	claims, err := token.Claims()
@@ -108,7 +212,7 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 	}
 
 	exists, _, err := c.Exists(userPath)
-	if err != nil || !exists {
+	if err != nil || (!exists && !isLocalUser(ctx, uid)) {
 		return common.NewHttpError("User unauthorized", http.StatusUnauthorized)
 	}
 
