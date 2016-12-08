@@ -15,41 +15,26 @@ import (
 )
 
 const (
-	zkLocalPath = "/dcos/localusers"
-	defaultLocalUser = "admin"
+	zkLdapPath = "/dcos/ldapusers"
 )
 
 var (
-	localUserRe = regexp.MustCompile(`^[a-zA-Z0-9“”._-]{2,}$`)
+	ldapUserRe = regexp.MustCompile(`^[a-zA-Z0-9“”._-]{2,}$`)
 )
 
-func validateLocalUser(uid string) bool {
-	return localUserRe.MatchString(uid)
+func validateLdapUser(uid string) bool {
+	//TODO: Need to update the RegExp to reflect LDAP usernames
+	return ldapUserRe.MatchString(uid)
 }
 
-func hasLocalUsers(ctx context.Context) (bool, error) {
-	c := ctx.Value("zk").(common.IZk)
-
-	users, _, err := c.Children(zkLocalPath)
-	if err != nil && err != zk.ErrNoNode {
-		return false, err
-	}
-
-	return len(users) != 0, nil
-}
-
-func isLocalUser(ctx context.Context, uid string) (bool, error) {
-	if !localLoginEnabled {
+func isLdapUser(ctx context.Context, uid string) (bool, error) {
+	if !ldapLoginEnabled {
 		return false, nil
 	}
 
-	if hasLocal, err := hasLocalUsers(ctx); !hasLocal || err != nil {
-		return uid == defaultLocalUser && err == nil, err
-	}
-
 	c := ctx.Value("zk").(common.IZk)
 
-	path := fmt.Sprintf("%s/%s", zkLocalPath, uid)
+	path := fmt.Sprintf("%s/%s", zkLdapPath, uid)
 	exists, _, err := c.Exists(path)
 	if err != nil {
 		return false, err
@@ -58,38 +43,36 @@ func isLocalUser(ctx context.Context, uid string) (bool, error) {
 	return exists, nil
 }
 
-func addDefaultLocalUser(ctx context.Context) error {
-	if !localLoginEnabled {
+func addLdapUser(ctx context.Context, uid string) error {
+	if !ldapLoginEnabled {
 		return nil
 	}
 
-	uid := defaultLocalUser
-
 	c := ctx.Value("zk").(common.IZk)
 
-	path := fmt.Sprintf("%s/%s", zkLocalPath, uid)
+	path := fmt.Sprintf("%s/%s", zkLdapPath, uid)
 	exists, _, err := c.Exists(path)
 	if err != nil {
 		return err
 	}
 	if exists {
-		return fmt.Errorf("Default local user already exists: %s", uid)
+		return fmt.Errorf("LDAP user already exists: %s", uid)
 	}
 
 	err = common.CreateParents(c, path, []byte(uid))
 	if err != nil {
 		return err
 	}
-	log.Printf("Default local user created: %s", uid)
+	log.Printf("LDAP user created: %s", uid)
 
 	return nil
 }
 
-func getLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
+func getLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
 	c := ctx.Value("zk").(common.IZk)
-	users, _, err := c.Children(zkLocalPath)
+	users, _, err := c.Children(zkLdapPath)
 	if err != nil && err != zk.ErrNoNode {
-		return common.NewHttpError("invalid email", http.StatusInternalServerError)
+		return common.NewHttpError("invalid LDAP path", http.StatusInternalServerError)
 	}
 
 	// users will be an empty list on ErrNoNode
@@ -105,27 +88,27 @@ func getLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(usersJson)
-	log.Debugf("Local users listed: %+v\n", users)
+	log.Debugf("LDAP users listed: %+v\n", users)
 	return nil
 }
 
-func getLocalUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
+func getLdapUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
 	// uid is already unescaped here
 	uid := mux.Vars(r)["uid"]
-	if !validateLocalUser(uid) {
-		return common.NewHttpError("invalid local user", http.StatusInternalServerError)
+	if !validateLdapUser(uid) {
+		return common.NewHttpError("invalid LDAP user", http.StatusInternalServerError)
 	}
 
 	c := ctx.Value("zk").(common.IZk)
 
-	path := fmt.Sprintf("%s/%s", zkLocalPath, uid)
+	path := fmt.Sprintf("%s/%s", zkLdapPath, uid)
 	exists, _, err := c.Exists(path)
 	if err != nil {
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 	}
 	if !exists {
 		log.Printf("getLocalUser: %v doesn't exist", path)
-		return common.NewHttpError("Local User Not Found", http.StatusNotFound)
+		return common.NewHttpError("LDAP User Not Found", http.StatusNotFound)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -136,24 +119,28 @@ func getLocalUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *
 	}
 	json.NewEncoder(w).Encode(userJson)
 
-	log.Debugf("Local user listed: %+v\n", uid)
+	log.Debugf("LDAP user listed: %+v\n", uid)
 
 	return nil
 }
 
-func putLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	if !localLoginEnabled {
-		return common.NewHttpError("Local login not enabled", http.StatusServiceUnavailable)
+func putLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
+	if !ldapLoginEnabled {
+		return common.NewHttpError("LDAP login not enabled", http.StatusServiceUnavailable)
+	}
+
+	if !ldapWhitelistOnly {
+		return common.NewHttpError("LDAP user created automatically at login", http.StatusServiceUnavailable)
 	}
 
 	uid := mux.Vars(r)["uid"]
-	if !validateLocalUser(uid) {
-		return common.NewHttpError("invalid local user", http.StatusInternalServerError)
+	if !validateLdapUser(uid) {
+		return common.NewHttpError("invalid LDAP user", http.StatusInternalServerError)
 	}
 
 	c := ctx.Value("zk").(common.IZk)
 
-	path := fmt.Sprintf("%s/%s", zkLocalPath, uid)
+	path := fmt.Sprintf("%s/%s", zkLdapPath, uid)
 	exists, _, err := c.Exists(path)
 	if err != nil {
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
@@ -165,10 +152,10 @@ func putLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	var user User
 	err = json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
-		log.Debugf("putLocalUsers: Decode: %v", err)
+		log.Debugf("putLdapUsers: Decode: %v", err)
 		return common.NewHttpError("invalid user json", http.StatusBadRequest)
 	}
-	log.Printf("Create local user: %+v", user)
+	log.Printf("Create LDAP user: %+v", user)
 
 	err = common.CreateParents(c, path, []byte(uid))
 	if err != nil {
@@ -176,25 +163,25 @@ func putLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	}
 	w.WriteHeader(http.StatusCreated)
 
-	log.Debugf("Local user created: %+v", uid)
+	log.Debugf("LDAP user created: %+v", uid)
 
 	return nil
 }
 
-func deleteLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
+func deleteLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
 	uid := mux.Vars(r)["uid"]
-	if !validateLocalUser(uid) {
-		return common.NewHttpError("invalid local user", http.StatusInternalServerError)
+	if !validateLdapUser(uid) {
+		return common.NewHttpError("invalid LDAP user", http.StatusInternalServerError)
 	}
 
 	c := ctx.Value("zk").(common.IZk)
-	path := fmt.Sprintf("%s/%s", zkLocalPath, uid)
+	path := fmt.Sprintf("%s/%s", zkLdapPath, uid)
 	exists, _, err := c.Exists(path)
 	if err != nil {
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 	}
 	if !exists {
-		return common.NewHttpError("Local user not found", http.StatusNotFound)
+		return common.NewHttpError("LDAP user not found", http.StatusNotFound)
 	}
 
 	err = c.Delete(path, 0)
@@ -203,6 +190,6 @@ func deleteLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Reques
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	log.Printf("Local user deleted: %+v", uid)
+	log.Printf("LDAP user deleted: %+v", uid)
 	return nil
 }

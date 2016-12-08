@@ -16,6 +16,7 @@ import (
 )
 
 const (
+	localLoginEnabled = true  //TODO: This should come from a config file somewhere
 	defaultLocalUserPassword = "admin"
 	prependPassword = "local"
 )
@@ -45,11 +46,13 @@ func verifyLocalUser(ctx context.Context, token jose.JWT) error {
 }
 
 func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	//TODO: Is there a way to set a TTL for the header
+	if !localLoginEnabled {
+		return common.NewHttpError("Local login not enabled", http.StatusServiceUnavailable)
+	}
 
 	uid, password, ok := r.BasicAuth()
 	if !ok {
-		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster"`)
+		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster Local Login"`)
 		return common.NewHttpError("Not authorized for Ethos cluster access", http.StatusUnauthorized)
 	}
 
@@ -64,14 +67,14 @@ func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Reques
 		if uid == defaultLocalUser {
 			isMatchingPassword = password == defaultLocalUserPassword
 		} else {
-			isMatchingPassword = password == prependPassword + uid
+			isMatchingPassword = password == prependPassword + uid  // Obviously not secure
 		}
 		if !isMatchingPassword {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster"`)
+			w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster Local Login"`)
 			return common.NewHttpError("Invalid username or password", http.StatusUnauthorized)
 		}
 	} else if uid != defaultLocalUser || password != defaultLocalUserPassword || (hasLocal && !isLocal) {
-		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster"`)
+		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster Local Login"`)
 		return common.NewHttpError("Invalid username or password", http.StatusUnauthorized)
 	} else if !hasLocal { // Should only get here for defaultLocalUser, has correct password, and hasn't been removed from local users
 		err := addDefaultLocalUser(ctx)

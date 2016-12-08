@@ -66,7 +66,11 @@ func getUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *commo
 	if err != nil {
 		return common.NewHttpError("Local user processing error", http.StatusInternalServerError)
 	}
-	if !isLocal && !common.ValidateEmail(uid) {
+	isLdap, err := isLdapUser(ctx, uid)
+	if err != nil {
+		return common.NewHttpError("LDAP user processing error", http.StatusInternalServerError)
+	}
+	if !isLocal && !isLdap && !common.ValidateEmail(uid) {
 		return common.NewHttpError("invalid email", http.StatusInternalServerError)
 	}
 
@@ -77,15 +81,9 @@ func getUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *commo
 	if err != nil {
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 	}
-	if !exists {
-		isLocal, err := isLocalUser(ctx, uid)
-		if err != nil {
-			return common.NewHttpError("Local user processing error", http.StatusInternalServerError)
-		}
-		if !isLocal {
-			log.Printf("getUser: %v doesn't exist", path)
-			return common.NewHttpError("User Not Found", http.StatusNotFound)
-		}
+	if !exists && !isLocal && !isLdap {
+		log.Printf("getUser: %v doesn't exist", path)
+		return common.NewHttpError("User Not Found", http.StatusNotFound)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -68,8 +68,10 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 	err = oidcCli.VerifyJWT(token)
 	if err != nil {
 		if err2 := verifyLocalUser(ctx, token); err2 != nil {
-			log.Printf("VerifyJWT: %v; %v", err, err2)
-			return common.NewHttpError("JWT verification failed", http.StatusUnauthorized)
+			if err3 := verifyLdapUser(ctx, token); err3 != nil {
+				log.Printf("VerifyJWT: %v; %v; %v", err, err2, err3)
+				return common.NewHttpError("JWT verification failed", http.StatusUnauthorized)
+			}
 		}
 	}
 
@@ -121,7 +123,14 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 			return common.NewHttpError("User unauthorized", http.StatusUnauthorized)
 		}
 		if !isLocal {
-			return common.NewHttpError("User unauthorized", http.StatusUnauthorized)
+			isLdap, err := isLdapUser(ctx, uid)
+			if err != nil {
+				log.Printf("handleLogin: error: %v", err)
+				return common.NewHttpError("User unauthorized", http.StatusUnauthorized)
+			}
+			if !isLdap {
+				return common.NewHttpError("User unauthorized", http.StatusUnauthorized)
+			}
 		}
 	}
 
