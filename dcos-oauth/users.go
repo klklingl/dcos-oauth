@@ -15,10 +15,6 @@ import (
 	"github.com/dcos/dcos-oauth/common"
 )
 
-const (
-	defaultLocalUser = "admin"
-)
-
 var httpClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
@@ -37,19 +33,6 @@ type User struct {
 
 	CreatorUid string `json:"creator_uid,omitempty"`
 	ClusterURL string `json:"cluster_url,omitempty"`
-}
-
-func hasLocalUsers(ctx context.Context) bool {
-	//TODO: Get result from zookeeper
-	return false // For now there are no local users
-}
-
-func isLocalUser(ctx context.Context, uid string) bool {
-	if !hasLocalUsers(ctx) {
-		return uid == defaultLocalUser
-	}
-	//TODO: Compare UID to list in zookeeper
-	return false // For now there are no other local users
 }
 
 func getUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
@@ -79,7 +62,15 @@ func getUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *comm
 func getUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
 	// uid is already unescaped here
 	uid := mux.Vars(r)["uid"]
-	if !isLocalUser(ctx, uid) && !common.ValidateEmail(uid) {
+	isLocal, err := isLocalUser(ctx, uid)
+	if err != nil {
+		return common.NewHttpError("Local user processing error", http.StatusInternalServerError)
+	}
+	isLdap, err := isLdapUser(ctx, uid)
+	if err != nil {
+		return common.NewHttpError("LDAP user processing error", http.StatusInternalServerError)
+	}
+	if !isLocal && !isLdap && !common.ValidateEmail(uid) {
 		return common.NewHttpError("invalid email", http.StatusInternalServerError)
 	}
 
@@ -90,7 +81,7 @@ func getUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *commo
 	if err != nil {
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 	}
-	if !exists && !isLocalUser(ctx, uid) {
+	if !exists && !isLocal && !isLdap {
 		log.Printf("getUser: %v doesn't exist", path)
 		return common.NewHttpError("User Not Found", http.StatusNotFound)
 	}
