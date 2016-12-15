@@ -1,11 +1,16 @@
 {
 	"ImportPath": "github.com/dcos/dcos-oauth",
 	"GoVersion": "go1.6",
-	"GodepVersion": "v60",
+	"GodepVersion": "v74",
 	"Packages": [
 		"./..."
 	],
 	"Deps": [
+		{
+			"ImportPath": "github.com/BurntSushi/toml",
+			"Comment": "v0.2.0-21-g9906417",
+			"Rev": "99064174e013895bbd9b025c31100bd1d9b590ca"
+		},
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
 			"Comment": "v0.10.0",
@@ -62,6 +67,11 @@
 			"Rev": "5215b55f46b2b919f50a1df0eaa5886afe4e3b3d"
 		},
 		{
+			"ImportPath": "github.com/go-ldap/ldap",
+			"Comment": "v2.5.0",
+			"Rev": "8168ee085ee43257585e50c6441aadf54ecb2c9f"
+		},
+		{
 			"ImportPath": "github.com/gorilla/context",
 			"Rev": "1ea25387ff6f684839d82767c1733ff4d4d15d0a"
 		},
@@ -94,6 +104,11 @@
 		{
 			"ImportPath": "golang.org/x/sys/unix",
 			"Rev": "a60af9cbbc6ab800af4f2be864a31f423a0ae1f2"
+		},
+		{
+			"ImportPath": "gopkg.in/asn1-ber.v1",
+			"Comment": "v1.1",
+			"Rev": "4e86f4367175e39f69d9358a5f17b4dda270378d"
 		}
 	]
 }
