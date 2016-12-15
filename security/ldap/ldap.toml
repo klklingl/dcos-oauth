@@ -18,6 +18,10 @@ search_filter = "(cn=%s)"
 # An array of base dns to search through
 search_base_dns = ["dc=companynet,dc=global,dc=company,dc=com"]
 
+# Default role for users who are not members of groups below
+#default_role = "Admin"
+default_role = ""
+
 # Specify names of the ldap attributes your ldap uses
 [server.attributes]
 name = "givenName"

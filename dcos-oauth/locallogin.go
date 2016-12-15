@@ -47,6 +47,7 @@ func verifyLocalUser(ctx context.Context, token jose.JWT) error {
 
 func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
 	if !localLoginEnabled {
+		log.Printf("Local login tried but local login is not enabled")
 		return common.NewHttpError("Local login not enabled", http.StatusServiceUnavailable)
 	}
 
@@ -55,6 +56,7 @@ func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Reques
 		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster Local Login"`)
 		return common.NewHttpError("Not authorized for Ethos cluster access", http.StatusUnauthorized)
 	}
+	log.Printf("Attempting local login for user %s", uid)
 
 	hasLocal, err1 := hasLocalUsers(ctx)
 	isLocal, err2 := isLocalUser(ctx, uid)
@@ -91,6 +93,7 @@ func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Reques
 
 	clusterToken, err := jose.NewSignedJWT(claims, jose.NewSignerHMAC("secret", secretKey))
 	if err != nil {
+		log.Printf("JWT: error: %v", err)
 		return common.NewHttpError("JWT creation error", http.StatusInternalServerError)
 	}
 	encodedClusterToken := clusterToken.Encode()
@@ -130,5 +133,6 @@ func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Reques
 
 	json.NewEncoder(w).Encode(loginResponse{Token: encodedClusterToken})
 
+	log.Printf("Successful local login for user %s", uid)
 	return nil
 }
