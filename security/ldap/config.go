@@ -25,6 +25,7 @@ type ServerConfig struct {
 	Attr          AttributeMap `toml:"attributes"`
 	SearchFilter  string       `toml:"search_filter"`
 	SearchBaseDNs []string     `toml:"search_base_dns"`
+	DefaultRole   string       `toml:"default_role"`
 
 	LdapGroups []*GroupToOrganizationRole `toml:"group_mappings"`
 }

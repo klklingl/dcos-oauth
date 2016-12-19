@@ -14,11 +14,12 @@ import (
 
 	"github.com/dcos/dcos-oauth/common"
 	"github.com/dcos/dcos-oauth/security/ldap"
+	"github.com/dcos/dcos-oauth/security"
 )
 
 const (
 	ldapLoginEnabled = true  //TODO: This should come from a config file somewhere
-	ldapConfig = "/opt/mesosphere/etc/ldap.toml"
+	ldapConfig = "/etc/ethos/ldap.toml"
 	ldapWhitelistOnly = false  //TODO: This should come from a config file somewhere
 )
 
@@ -48,6 +49,7 @@ func verifyLdapUser(ctx context.Context, token jose.JWT) error {
 
 func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
 	if !ldapLoginEnabled {
+		log.Printf("LDAP login tried but LDAP login is not enabled")
 		return common.NewHttpError("LDAP login not enabled", http.StatusServiceUnavailable)
 	}
 
@@ -56,6 +58,7 @@ func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request
 		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster LDAP Login"`)
 		return common.NewHttpError("Not authorized for Ethos cluster access", http.StatusUnauthorized)
 	}
+	log.Printf("Attempting LDAP login for user %s", uid)
 
 	config, err := ldap.ConfigFromFile(ldapConfig)
 	if err != nil {
@@ -70,9 +73,14 @@ func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request
 	}
 
 	defer provider.Close()
-	_, err = provider.ValidateUser(uid, password)
-	if err != nil {
-		log.Printf("ValidateUser: error: %v", err)
+
+	ldapuser, err := provider.ValidateUser(uid, password)
+	if err != nil || !ldapuser.Identity().IsAuthenticated() {
+		if (err != nil) {
+			log.Printf("ValidateUser: error: %v", err)
+		} else {
+			log.Printf("ValidateUser: user not successfully authenticated")
+		}
 		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster LDAP Login"`)
 		return common.NewHttpError("Invalid LDAP username or password", http.StatusUnauthorized)
 	}
@@ -82,17 +90,17 @@ func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request
 		log.Printf("isLdapUser: error: %v", err)
 		return common.NewHttpError("LDAP user processing error", http.StatusInternalServerError)
 	}
-	if !isLdap {
-		if ldapWhitelistOnly {
-			log.Printf("handleLdapLogin: LDAP user %s is not on the whitelist", uid)
-			w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster LDAP Login"`)
-			return common.NewHttpError("LDAP user unauthorized", http.StatusUnauthorized)
-		}
-		log.Printf("Adding LDAP user %s", uid)
-		err = addLdapUser(ctx, uid)
-		if err != nil {
-			log.Printf("handleLdapLogin: error adding LDAP user: %v", err)
-		}
+	if !isLdap && ldapWhitelistOnly {
+		log.Printf("handleLdapLogin: LDAP user %s is not on the whitelist", uid)
+		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster LDAP Login"`)
+		return common.NewHttpError("LDAP user unauthorized", http.StatusUnauthorized)
+	}
+
+	if !(ldapuser.IsInRole(string(security.ROLE_ADMIN)) ||
+		(len(ldapuser.GetRoles()) == 0 && config.Server.DefaultRole == string(security.ROLE_ADMIN))) {
+		log.Printf("handleLdapLogin: LDAP user %s is not a member of an Admin group for this cluster", uid)
+		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster LDAP Login"`)
+		return common.NewHttpError("LDAP user unauthorized", http.StatusUnauthorized)
 	}
 
 	claims := make(jose.Claims)
@@ -103,6 +111,7 @@ func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request
 
 	clusterToken, err := jose.NewSignedJWT(claims, jose.NewSignerHMAC("secret", secretKey))
 	if err != nil {
+		log.Printf("JWT: error: %v", err)
 		return common.NewHttpError("JWT creation error", http.StatusInternalServerError)
 	}
 	encodedClusterToken := clusterToken.Encode()
@@ -142,5 +151,14 @@ func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request
 
 	json.NewEncoder(w).Encode(loginResponse{Token: encodedClusterToken})
 
+	if !isLdap {
+		log.Printf("Adding LDAP user %s", uid)
+		err = addLdapUser(ctx, uid)
+		if err != nil {
+			log.Printf("handleLdapLogin: error adding LDAP user: %v", err)
+		}
+	}
+
+	log.Printf("Successful LDAP login for user %s", uid)
 	return nil
 }

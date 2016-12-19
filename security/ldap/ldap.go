@@ -156,11 +156,12 @@ func (a *Provider) mapToOrgUser(u *User) *security.User {
 		}
 	}
 	return &security.User{
-		Username:  u.Username,
-		FirstName: u.FirstName,
-		LastName:  u.LastName,
-		Email:     u.Email,
-		Roles:     roles,
+		Username:      u.Username,
+		FirstName:     u.FirstName,
+		LastName:      u.LastName,
+		Email:         u.Email,
+		Roles:         roles,
+		Authenticated: u.isAuthenticated,
 	}
 }
 

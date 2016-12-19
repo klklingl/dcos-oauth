@@ -1,17 +1,17 @@
 package security
 
 type User struct {
-	Username        string
-	Email           string
-	FirstName       string
-	LastName        string
-	Roles           []RoleType
-	providerType    string
-	isAuthenticated bool
+	Username      string
+	Email         string
+	FirstName     string
+	LastName      string
+	Roles         []RoleType
+	providerType  string
+	Authenticated bool
 }
 
 func (u *User) IsAuthenticated() bool {
-	return u.isAuthenticated
+	return u.Authenticated
 }
 
 func (u *User) AuthenticationType() string {
