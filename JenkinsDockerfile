@@ -1,2 +1,2 @@
 FROM golang:1.7
-RUN apk add --no-cache --virtual .build-deps git make && mkdir -p /go/src/github.com/dcos && chmod 777 /go/src/github.com/dcos
+RUN mkdir -p /go/src/github.com/dcos && chmod 777 /go/src/github.com/dcos
