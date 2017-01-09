@@ -6,14 +6,17 @@ import (
 
 var routes = map[string]map[string]common.Handler{
 	"POST": {
-		"/acs/api/v1/auth/login":      handleLogin,
-		"/acs/api/v1/auth/locallogin": handleLocalLogin,
-		"/acs/api/v1/auth/ldaplogin":  handleLdapLogin,
+		"/acs/api/v1/auth/login":          handleLogin,
+		"/acs/api/v1/auth/locallogin":     handleLocalLogin,
+		"/acs/api/v1/auth/ldaplogin":      handleLdapLogin,
+		"/acs/api/v1/ldapusers":           postLdapUsers,
+		"/acs/api/v1/ldapusers/{uid:.*}":  postLdapUsers,
+		"/acs/api/v1/localusers":          postLocalUsers,
+		"/acs/api/v1/localusers/{uid:.*}": postLocalUsers,
 	},
 	"PUT": {
 		"/acs/api/v1/users/{uid:.*}":      putUsers,
-		"/acs/api/v1/localusers/{uid:.*}": putLocalUsers,
-		"/acs/api/v1/ldapusers/{uid:.*}":  putLdapUsers,
+		"/acs/api/v1/localusers/{uid:.*}": putLocalUsers, // Change password
 	},
 	"GET": {
 		"/dcos-metadata/ui-config.json":   handleUIConfig,

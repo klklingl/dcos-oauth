@@ -4,10 +4,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"golang.org/x/net/context"
 
 	"github.com/coreos/go-oidc/jose"
@@ -34,7 +34,7 @@ func verifyLdapUser(ctx context.Context, token jose.JWT) error {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("Invalid email claim for local user")
+		return fmt.Errorf("Invalid email claim for ldap user")
 	}
 
 	isLdap, err := isLdapUser(ctx, uid)
