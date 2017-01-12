@@ -9,18 +9,27 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/samuel/go-zookeeper/zk"
 	"golang.org/x/net/context"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/dcos/dcos-oauth/common"
 	"regexp"
 )
 
+type userPasswordInfo struct {
+	Username    string `json:"username,omitempty"`
+	OldPassword string `json:"oldpassword,omitempty"`
+	NewPassword string `json:"newpassword,omitempty"`
+}
+
 const (
 	zkLocalPath = "/dcos/localusers"
 	defaultLocalUser = "admin"
+	minPasswordLength = 12
 )
 
 var (
 	localUserRe = regexp.MustCompile(`^[a-zA-Z0-9“”._-]{2,}$`)
+	bcryptCost = bcrypt.DefaultCost
 )
 
 func validateLocalUser(uid string) bool {
@@ -76,7 +85,12 @@ func addDefaultLocalUser(ctx context.Context) error {
 		return fmt.Errorf("Default local user already exists: %s", uid)
 	}
 
-	err = common.CreateParents(c, path, []byte(uid))
+	hash, err := bcrypt.GenerateFromPassword([]byte(defaultLocalUserPassword), bcryptCost)
+	if err != nil {
+		return err
+	}
+
+	err = common.CreateParents(c, path, hash)
 	if err != nil {
 		return err
 	}
@@ -121,6 +135,7 @@ func getLocalUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *
 	path := fmt.Sprintf("%s/%s", zkLocalPath, uid)
 	exists, _, err := c.Exists(path)
 	if err != nil {
+		log.Debugf("getLdapUsers: Zookeeper error: %v", err)
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 	}
 	if !exists {
@@ -141,6 +156,70 @@ func getLocalUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *
 	return nil
 }
 
+func postLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
+	if !localLoginEnabled {
+		return common.NewHttpError("Local login not enabled", http.StatusServiceUnavailable)
+	}
+
+	var info userPasswordInfo
+	err := json.NewDecoder(r.Body).Decode(&info) // OldPassword not expected and would be ignored since local user can't already exist
+	if err != nil {
+		log.Debugf("postLocalUsers: Decode error: %v", err)
+		return common.NewHttpError("invalid json", http.StatusBadRequest)
+	}
+
+	// Prefer user specified in the body over one from the URL
+	var uid string
+	if info.Username != "" {
+		uid = info.Username
+	} else {
+		uid = mux.Vars(r)["uid"]
+	}
+	if uid == "" {
+		return common.NewHttpError("Local user required", http.StatusBadRequest)
+	}
+	if !validateLocalUser(uid) {
+		return common.NewHttpError("invalid local user", http.StatusInternalServerError)
+	}
+	log.Debugf("Creating local user: %+v", uid)
+
+	c := ctx.Value("zk").(common.IZk)
+
+	path := fmt.Sprintf("%s/%s", zkLocalPath, uid)
+	exists, _, err := c.Exists(path)
+	if err != nil {
+		log.Debugf("postLocalUsers: Zookeeper error: %v", err)
+		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
+	}
+	if exists {
+		return common.NewHttpError(fmt.Sprintf("Local user %s already exists", uid), http.StatusConflict)
+	}
+
+	if info.NewPassword == "" {
+		return common.NewHttpError("invalid json for new user. Requires \"newpassword\":\"newpass\"", http.StatusBadRequest)
+	}
+	if len(info.NewPassword) < minPasswordLength {
+		return common.NewHttpError(
+			fmt.Sprintf("Password must have at least %d characters", minPasswordLength),
+			http.StatusBadRequest)
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(info.NewPassword), bcryptCost)
+	if err != nil {
+		return common.NewHttpError("Encryption error", http.StatusInternalServerError)
+	}
+
+	err = common.CreateParents(c, path, hash)
+	if err != nil {
+		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
+	}
+	w.WriteHeader(http.StatusCreated)
+
+	log.Printf("Local user created: %+v", uid)
+
+	return nil
+}
+
 func putLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
 	if !localLoginEnabled {
 		return common.NewHttpError("Local login not enabled", http.StatusServiceUnavailable)
@@ -148,7 +227,7 @@ func putLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 
 	uid := mux.Vars(r)["uid"]
 	if !validateLocalUser(uid) {
-		return common.NewHttpError("invalid local user", http.StatusInternalServerError)
+		return common.NewHttpError(fmt.Sprintf("invalid local user: %s", uid), http.StatusBadRequest)
 	}
 
 	c := ctx.Value("zk").(common.IZk)
@@ -156,27 +235,59 @@ func putLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	path := fmt.Sprintf("%s/%s", zkLocalPath, uid)
 	exists, _, err := c.Exists(path)
 	if err != nil {
+		log.Debugf("putLocalUsers: Zookeeper error: %v", err)
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 	}
-	if exists {
-		return common.NewHttpError("Already Exists", http.StatusConflict)
+	if !exists {
+		return common.NewHttpError(fmt.Sprintf("Local user %s not found", uid), http.StatusNotFound)
 	}
 
-	var user User
-	err = json.NewDecoder(r.Body).Decode(&user)
+	var info userPasswordInfo
+	err = json.NewDecoder(r.Body).Decode(&info) // Username not expected and would be ignored since it always comes from the URL for PUT
 	if err != nil {
-		log.Debugf("putLocalUsers: Decode: %v", err)
-		return common.NewHttpError("invalid user json", http.StatusBadRequest)
+		log.Debugf("putLocalUsers: Decode error: %v", err)
+		return common.NewHttpError("invalid json", http.StatusBadRequest)
 	}
-	log.Printf("Create local user: %+v", user)
+	if info.OldPassword == "" || info.NewPassword == "" {
+		return common.NewHttpError(
+			"invalid json for changing password. Requires \"oldpassword\":\"oldpass\",\"newpassword\":\"newpass\"",
+			http.StatusBadRequest)
+	}
+	if len(info.NewPassword) < minPasswordLength {
+		return common.NewHttpError(
+			fmt.Sprintf("Password must have at least %d characters", minPasswordLength),
+			http.StatusBadRequest)
+	}
 
-	err = common.CreateParents(c, path, []byte(uid))
+	hash, _, err := c.Get(path)
+	if err != nil {
+		log.Printf("putLocalUsers: error getting hash for comparison: %v", err)
+	}
+
+	err = bcrypt.CompareHashAndPassword(hash, []byte(info.OldPassword))
+	if err != nil {
+		log.Debugf("putLocalUsers: error comparing passwords for user %s: %v", uid, err)
+		return common.NewHttpError("Current password and OldPassword do not match", http.StatusBadRequest)
+	}
+
+	hash, err = bcrypt.GenerateFromPassword([]byte(info.NewPassword), bcryptCost)
+	if err != nil {
+		return common.NewHttpError("Encryption error", http.StatusInternalServerError)
+	}
+
+	//TODO: Need a Set function instead of deleting and adding in case there are other attributes
+	err = c.Delete(path, 0)
+	if err != nil {
+		log.Debugf("putLocalUsers: Zookeeper delete error: %v", err)
+		return common.NewHttpError("Zookeeper delete error", http.StatusInternalServerError)
+	}
+	err = common.CreateParents(c, path, hash)
 	if err != nil {
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 	}
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(http.StatusAccepted)
 
-	log.Debugf("Local user created: %+v", uid)
+	log.Printf("Password changed for local user: %+v", uid)
 
 	return nil
 }

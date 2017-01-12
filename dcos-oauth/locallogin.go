@@ -4,11 +4,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"golang.org/x/net/context"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/coreos/go-oidc/jose"
 
@@ -18,7 +19,6 @@ import (
 const (
 	localLoginEnabled = true  //TODO: This should come from a config file somewhere
 	defaultLocalUserPassword = "admin"
-	prependPassword = "local"
 )
 
 func verifyLocalUser(ctx context.Context, token jose.JWT) error {
@@ -65,13 +65,17 @@ func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Reques
 		return common.NewHttpError("local user processing error", http.StatusInternalServerError)
 	}
 	if hasLocal && isLocal {
-		isMatchingPassword := false
-		if uid == defaultLocalUser {
-			isMatchingPassword = password == defaultLocalUserPassword
-		} else {
-			isMatchingPassword = password == prependPassword + uid  // Obviously not secure
+		c := ctx.Value("zk").(common.IZk)
+
+		path := fmt.Sprintf("%s/%s", zkLocalPath, uid)
+		hash, _, err := c.Get(path)
+		if err != nil {
+			log.Printf("handleLocalLogin: error getting password for comparison: %v", err)
 		}
-		if !isMatchingPassword {
+
+		err = bcrypt.CompareHashAndPassword(hash, []byte(password))
+		if err != nil {
+			log.Debugf("handleLocalLogin: error comparing passwords for user %s: %v", uid, err)
 			w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster Local Login"`)
 			return common.NewHttpError("Invalid username or password", http.StatusUnauthorized)
 		}

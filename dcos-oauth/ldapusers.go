@@ -14,6 +14,10 @@ import (
 	"regexp"
 )
 
+type userInfo struct {
+	Username    string `json:"username,omitempty"`
+}
+
 const (
 	zkLdapPath = "/dcos/ldapusers"
 )
@@ -104,10 +108,11 @@ func getLdapUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 	path := fmt.Sprintf("%s/%s", zkLdapPath, uid)
 	exists, _, err := c.Exists(path)
 	if err != nil {
+		log.Debugf("getLdapUsers: Zookeeper error: %v", err)
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 	}
 	if !exists {
-		log.Printf("getLocalUser: %v doesn't exist", path)
+		log.Printf("getLdapUser: %v doesn't exist", path)
 		return common.NewHttpError("LDAP User Not Found", http.StatusNotFound)
 	}
 
@@ -124,7 +129,7 @@ func getLdapUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 	return nil
 }
 
-func putLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
+func postLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
 	if !ldapLoginEnabled {
 		return common.NewHttpError("LDAP login not enabled", http.StatusServiceUnavailable)
 	}
@@ -133,29 +138,39 @@ func putLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *
 		return common.NewHttpError("LDAP user created automatically at login", http.StatusServiceUnavailable)
 	}
 
-	uid := mux.Vars(r)["uid"]
+	var info userInfo
+	err := json.NewDecoder(r.Body).Decode(&info)
+	if err != nil {
+		log.Debugf("postLdapUsers: Decode error: %v", err)
+		return common.NewHttpError("invalid json", http.StatusBadRequest)
+	}
+
+	// Prefer user from the body over one from the URL
+	var uid string
+	if info.Username != "" {
+		uid = info.Username
+	} else {
+		uid = mux.Vars(r)["uid"]
+	}
+	if uid == "" {
+		return common.NewHttpError("LDAP user required", http.StatusBadRequest)
+	}
 	if !validateLdapUser(uid) {
 		return common.NewHttpError("invalid LDAP user", http.StatusInternalServerError)
 	}
+	log.Debugf("Creating LDAP user: %+v", uid)
 
 	c := ctx.Value("zk").(common.IZk)
 
 	path := fmt.Sprintf("%s/%s", zkLdapPath, uid)
 	exists, _, err := c.Exists(path)
 	if err != nil {
+		log.Debugf("postLdapUsers: Zookeeper error: %v", err)
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 	}
 	if exists {
 		return common.NewHttpError("Already Exists", http.StatusConflict)
 	}
-
-	var user User
-	err = json.NewDecoder(r.Body).Decode(&user)
-	if err != nil {
-		log.Debugf("putLdapUsers: Decode: %v", err)
-		return common.NewHttpError("invalid user json", http.StatusBadRequest)
-	}
-	log.Printf("Create LDAP user: %+v", user)
 
 	err = common.CreateParents(c, path, []byte(uid))
 	if err != nil {
@@ -163,7 +178,7 @@ func putLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *
 	}
 	w.WriteHeader(http.StatusCreated)
 
-	log.Debugf("LDAP user created: %+v", uid)
+	log.Printf("LDAP user created: %+v", uid)
 
 	return nil
 }
