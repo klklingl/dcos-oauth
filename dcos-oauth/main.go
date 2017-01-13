@@ -2,6 +2,8 @@ package main
 
 import (
 	"os"
+	"fmt"
+	"strconv"
 
 	"github.com/codegangsta/cli"
 	"golang.org/x/net/context"
@@ -14,7 +16,8 @@ func main() {
 		Name:      "serve",
 		ShortName: "s",
 		Usage:     "Serve the API",
-		Flags:     []cli.Flag{common.FlAddr, common.FlZkAddr, flIssuerURL, flClientID, flSecretKeyPath, flSegmentKey},
+		Flags:     []cli.Flag{common.FlAddr, common.FlZkAddr, flIssuerURL, flClientID, flSecretKeyPath, flSegmentKey,
+				flAllowLocalUsers, flAllowLdapUsers, flLdapConfigFile, flLdapWhitelistOnly},
 		Action:    action(serveAction),
 	}
 
@@ -36,6 +39,39 @@ func serveAction(c *cli.Context) error {
 
 	// TODO not used everywhere yet
 	ctx = context.WithValue(ctx, "zk-path", "/dcos/users")
+
+	bVal, err := strconv.ParseBool(c.String(keyAllowLocalUsers))
+	if err != nil {
+		return err
+	}
+	ctx = context.WithValue(ctx, keyAllowLocalUsers, bVal)
+	if allowLocalUsers(ctx) {
+		fmt.Println("Local users allowed")
+	} else {
+		fmt.Println("Local users NOT allowed")
+	}
+
+	bVal, err = strconv.ParseBool(c.String(keyAllowLdapUsers))
+	if err != nil {
+		return err
+	}
+	ctx = context.WithValue(ctx, keyAllowLdapUsers, bVal)
+	if allowLdapUsers(ctx) {
+		fmt.Println("LDAP users allowed")
+	} else {
+		fmt.Println("LDAP users NOT allowed")
+	}
+
+	ctx = context.WithValue(ctx, keyLdapConfigFile, c.String(keyLdapConfigFile))
+
+	bVal, err = strconv.ParseBool(c.String(keyLdapWhitelistOnly))
+	if err != nil {
+		return err
+	}
+	ctx = context.WithValue(ctx, keyLdapWhitelistOnly, bVal)
+	if ldapWhitelistOnly(ctx) {
+		fmt.Println("LDAP users must be on the whitelist")
+	}
 
 	return common.ServeCmd(c, ctx, routes)
 }
