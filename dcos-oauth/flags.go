@@ -30,4 +30,32 @@ var (
 		Usage: "Segment key",
 		Value: "39uhSEOoRHMw6cMR6st9tYXDbAL3JSaP",
 	}
+
+	flAllowLocalUsers = cli.StringFlag{
+		Name:  keyAllowLocalUsers,
+		Usage: "Allow local users",
+		Value: "false",
+		EnvVar: "OAUTH_ALLOW_LOCAL_USERS",
+	}
+
+	flAllowLdapUsers = cli.StringFlag{
+		Name:  keyAllowLdapUsers,
+		Usage: "Allow LDAP users",
+		Value: "false",
+		EnvVar: "OAUTH_ALLOW_LDAP_USERS",
+	}
+
+	flLdapConfigFile = cli.StringFlag{
+		Name:  keyLdapConfigFile,
+		Usage: "LDAP config file",
+		Value: "/etc/ethos/ldap.toml",
+		EnvVar: "OAUTH_LDAP_CONFIG_FILE",
+	}
+
+	flLdapWhitelistOnly = cli.StringFlag{
+		Name:  keyLdapWhitelistOnly,
+		Usage: "LDAP user allowed only when on whitelist",
+		Value: "false",
+		EnvVar: "OAUTH_LDAP_WHITELIST_ONLY",
+	}
 )

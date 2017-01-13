@@ -17,7 +17,6 @@ import (
 )
 
 const (
-	localLoginEnabled = true  //TODO: This should come from a config file somewhere
 	defaultLocalUserPassword = "admin"
 )
 
@@ -46,9 +45,9 @@ func verifyLocalUser(ctx context.Context, token jose.JWT) error {
 }
 
 func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	if !localLoginEnabled {
-		log.Printf("Local login tried but local login is not enabled")
-		return common.NewHttpError("Local login not enabled", http.StatusServiceUnavailable)
+	if !allowLocalUsers(ctx) {
+		log.Printf("Local user login attempted but local users are not allowed")
+		return common.NewHttpError("Local user login is not allowed", http.StatusServiceUnavailable)
 	}
 
 	uid, password, ok := r.BasicAuth()

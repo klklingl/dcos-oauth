@@ -62,13 +62,20 @@ func getUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *comm
 func getUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
 	// uid is already unescaped here
 	uid := mux.Vars(r)["uid"]
-	isLocal, err := isLocalUser(ctx, uid)
-	if err != nil {
-		return common.NewHttpError("Local user processing error", http.StatusInternalServerError)
+	var err error
+	isLocal := false
+	isLdap := false
+	if allowLocalUsers(ctx) {
+		isLocal, err = isLocalUser(ctx, uid)
+		if err != nil {
+			return common.NewHttpError("Local user processing error", http.StatusInternalServerError)
+		}
 	}
-	isLdap, err := isLdapUser(ctx, uid)
-	if err != nil {
-		return common.NewHttpError("LDAP user processing error", http.StatusInternalServerError)
+	if allowLdapUsers(ctx) {
+		isLdap, err = isLdapUser(ctx, uid)
+		if err != nil {
+			return common.NewHttpError("LDAP user processing error", http.StatusInternalServerError)
+		}
 	}
 	if !isLocal && !isLdap && !common.ValidateEmail(uid) {
 		return common.NewHttpError("invalid email", http.StatusInternalServerError)

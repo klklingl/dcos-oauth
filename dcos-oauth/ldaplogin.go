@@ -17,12 +17,6 @@ import (
 	"github.com/dcos/dcos-oauth/security"
 )
 
-const (
-	ldapLoginEnabled = true  //TODO: This should come from a config file somewhere
-	ldapConfig = "/etc/ethos/ldap.toml"
-	ldapWhitelistOnly = false  //TODO: This should come from a config file somewhere
-)
-
 func verifyLdapUser(ctx context.Context, token jose.JWT) error {
 	claims, err := token.Claims()
 	if err != nil {
@@ -48,9 +42,9 @@ func verifyLdapUser(ctx context.Context, token jose.JWT) error {
 }
 
 func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	if !ldapLoginEnabled {
-		log.Printf("LDAP login tried but LDAP login is not enabled")
-		return common.NewHttpError("LDAP login not enabled", http.StatusServiceUnavailable)
+	if !allowLdapUsers(ctx) {
+		log.Printf("LDAP login attempted but LDAP users are not allowed")
+		return common.NewHttpError("LDAP user login is not allowed", http.StatusServiceUnavailable)
 	}
 
 	uid, password, ok := r.BasicAuth()
@@ -60,7 +54,7 @@ func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request
 	}
 	log.Printf("Attempting LDAP login for user %s", uid)
 
-	config, err := ldap.ConfigFromFile(ldapConfig)
+	config, err := ldap.ConfigFromFile(ldapConfigFile(ctx))
 	if err != nil {
 		log.Printf("Config: error: %v", err)
 		return common.NewHttpError("LDAP reading config failed", http.StatusInternalServerError)
@@ -90,7 +84,7 @@ func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request
 		log.Printf("isLdapUser: error: %v", err)
 		return common.NewHttpError("LDAP user processing error", http.StatusInternalServerError)
 	}
-	if !isLdap && ldapWhitelistOnly {
+	if !isLdap && ldapWhitelistOnly(ctx) {
 		log.Printf("handleLdapLogin: LDAP user %s is not on the whitelist", uid)
 		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster LDAP Login"`)
 		return common.NewHttpError("LDAP user unauthorized", http.StatusUnauthorized)

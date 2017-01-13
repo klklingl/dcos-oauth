@@ -32,7 +32,7 @@ func validateLdapUser(uid string) bool {
 }
 
 func isLdapUser(ctx context.Context, uid string) (bool, error) {
-	if !ldapLoginEnabled {
+	if !allowLdapUsers(ctx) {
 		return false, nil
 	}
 
@@ -48,7 +48,7 @@ func isLdapUser(ctx context.Context, uid string) (bool, error) {
 }
 
 func addLdapUser(ctx context.Context, uid string) error {
-	if !ldapLoginEnabled {
+	if !allowLdapUsers(ctx) {
 		return nil
 	}
 
@@ -130,12 +130,12 @@ func getLdapUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 }
 
 func postLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	if !ldapLoginEnabled {
-		return common.NewHttpError("LDAP login not enabled", http.StatusServiceUnavailable)
+	if !allowLdapUsers(ctx) {
+		return common.NewHttpError("LDAP users are not allowed", http.StatusServiceUnavailable)
 	}
 
-	if !ldapWhitelistOnly {
-		return common.NewHttpError("LDAP user created automatically at login", http.StatusServiceUnavailable)
+	if !ldapWhitelistOnly(ctx) {
+		return common.NewHttpError("LDAP users created automatically at login", http.StatusServiceUnavailable)
 	}
 
 	var info userInfo

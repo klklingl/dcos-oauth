@@ -48,7 +48,7 @@ func hasLocalUsers(ctx context.Context) (bool, error) {
 }
 
 func isLocalUser(ctx context.Context, uid string) (bool, error) {
-	if !localLoginEnabled {
+	if !allowLocalUsers(ctx) {
 		return false, nil
 	}
 
@@ -68,7 +68,7 @@ func isLocalUser(ctx context.Context, uid string) (bool, error) {
 }
 
 func addDefaultLocalUser(ctx context.Context) error {
-	if !localLoginEnabled {
+	if !allowLocalUsers(ctx) {
 		return nil
 	}
 
@@ -157,8 +157,8 @@ func getLocalUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *
 }
 
 func postLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	if !localLoginEnabled {
-		return common.NewHttpError("Local login not enabled", http.StatusServiceUnavailable)
+	if !allowLocalUsers(ctx) {
+		return common.NewHttpError("Local users are not allowed", http.StatusServiceUnavailable)
 	}
 
 	var info userPasswordInfo
@@ -221,8 +221,8 @@ func postLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request)
 }
 
 func putLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	if !localLoginEnabled {
-		return common.NewHttpError("Local login not enabled", http.StatusServiceUnavailable)
+	if !allowLocalUsers(ctx) {
+		return common.NewHttpError("Local users are not allowed", http.StatusServiceUnavailable)
 	}
 
 	uid := mux.Vars(r)["uid"]
