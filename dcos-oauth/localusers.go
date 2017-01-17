@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
+	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
@@ -12,7 +14,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/dcos/dcos-oauth/common"
-	"regexp"
 )
 
 type userPasswordInfo struct {
@@ -23,7 +24,6 @@ type userPasswordInfo struct {
 
 const (
 	zkLocalPath = "/dcos/localusers"
-	defaultLocalUser = "admin"
 	minPasswordLength = 12
 )
 
@@ -53,7 +53,7 @@ func isLocalUser(ctx context.Context, uid string) (bool, error) {
 	}
 
 	if hasLocal, err := hasLocalUsers(ctx); !hasLocal || err != nil {
-		return uid == defaultLocalUser && err == nil, err
+		return uid == defaultLocalUser(ctx) && err == nil, err
 	}
 
 	c := ctx.Value("zk").(common.IZk)
@@ -72,7 +72,7 @@ func addDefaultLocalUser(ctx context.Context) error {
 		return nil
 	}
 
-	uid := defaultLocalUser
+	uid := defaultLocalUser(ctx)
 
 	c := ctx.Value("zk").(common.IZk)
 
@@ -82,12 +82,16 @@ func addDefaultLocalUser(ctx context.Context) error {
 		return err
 	}
 	if exists {
-		return fmt.Errorf("Default local user already exists: %s", uid)
+		return nil
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(defaultLocalUserPassword), bcryptCost)
-	if err != nil {
-		return err
+	hash := []byte(defaultLocalUserHash(ctx))
+	// In the future may only want to allow a hash instead of a hash or plain text password
+	if !strings.HasPrefix(string(hash), "$") {
+		hash, err = bcrypt.GenerateFromPassword(hash, bcryptCost)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = common.CreateParents(c, path, hash)

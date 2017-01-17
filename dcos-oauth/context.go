@@ -6,6 +6,8 @@ import (
 
 const (
 	keyAllowLocalUsers = "allow-local-users"
+	keyDefaultLocalUser = "default-local-user"
+	keyDefaultLocalUserHash = "default-local-user-hash"
 	keyAllowLdapUsers = "allow-ldap-users"
 	keyLdapConfigFile = "ldap-config-file"
 	keyLdapWhitelistOnly = "ldap-whitelist-only"
@@ -13,6 +15,14 @@ const (
 
 func allowLocalUsers(ctx context.Context) bool {
 	return ctx.Value(keyAllowLocalUsers).(bool)
+}
+
+func defaultLocalUser(ctx context.Context) string {
+	return ctx.Value(keyDefaultLocalUser).(string)
+}
+
+func defaultLocalUserHash(ctx context.Context) string {
+	return ctx.Value(keyDefaultLocalUserHash).(string)
 }
 
 func allowLdapUsers(ctx context.Context) bool {

@@ -102,7 +102,7 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 	}
 
 	userPath := fmt.Sprintf("/dcos/users/%s", uid)
-	if len(users) == 0 {
+	if len(users) == 0 && defaultLocalUser(ctx) == "" { // No users yet and no default local user was specified
 		// create first user
 		log.Printf("creating first user %v", uid)
 		err = common.CreateParents(c, userPath, []byte(uid))
