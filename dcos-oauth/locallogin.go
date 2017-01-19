@@ -17,6 +17,66 @@ import (
 	"github.com/dcos/dcos-oauth/common"
 )
 
+type tryLimitsUser struct {
+	lockout time.Time    // Time when lockout ends, IsZero if not locked out
+	tries   []time.Time  // Times of most recent login attempts
+}
+
+const (
+	tryLimitsLockoutDuration = time.Duration(30 * time.Minute)
+	tryLimitsSamplePeriod = time.Duration(5 * time.Minute)
+	tryLimitsMaxTries = 6
+)
+
+var (
+	tryLimitsTracker = make(map[string]*tryLimitsUser)
+)
+
+func tryLimitsCheck(uid string) error {
+	now := time.Now().UTC()
+
+	tlUser, exists := tryLimitsTracker[uid]
+	if !exists {
+		tlUser = &tryLimitsUser{
+			lockout: time.Time{},
+			tries: nil,
+		}
+		tryLimitsTracker[uid] = tlUser
+	}
+
+	// Remove any expired tries and add the current one
+	periodBegin := now.Add(-tryLimitsSamplePeriod)
+	firstKeeper := len(tlUser.tries) - (tryLimitsMaxTries - 1)
+	if firstKeeper < 0 {
+		firstKeeper = 0
+	}
+	for _, val := range tlUser.tries[firstKeeper:] {
+		if val.After(periodBegin) {
+			break
+		}
+		firstKeeper++
+	}
+	tlUser.tries = append(tlUser.tries[firstKeeper:], now)
+
+	if !tlUser.lockout.IsZero() {
+		if now.Before(tlUser.lockout) {
+			return fmt.Errorf("Locked out")
+		}
+		tlUser.lockout = time.Time{}
+	}
+
+	if len(tlUser.tries) >= tryLimitsMaxTries {
+		tlUser.lockout = now.Add(tryLimitsLockoutDuration)
+		log.Printf("User %s locked out by too many failed login attempts", uid)
+		return fmt.Errorf("Locked out, too many recent login attempts")
+	}
+	return nil
+}
+
+func tryLimitsReset(uid string) {
+	delete(tryLimitsTracker, uid)
+}
+
 func verifyLocalUser(ctx context.Context, token jose.JWT) error {
 	claims, err := token.Claims()
 	if err != nil {
@@ -52,7 +112,18 @@ func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Reques
 		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster Local Login"`)
 		return common.NewHttpError("Not authorized for Ethos cluster access", http.StatusUnauthorized)
 	}
+	if uid == "" {
+		log.Debugf("handleLocalLogin: no user specified")
+		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster Local Login"`)
+		return common.NewHttpError("Invalid username or password", http.StatusUnauthorized)
+	}
 	log.Printf("Attempting local login for user %s", uid)
+
+	err := tryLimitsCheck(uid)
+	if err != nil {
+		log.Debugf("handleLocalLogin: hit try limit for user %s: error %v", uid, err)
+		return common.NewHttpError("Invalid username or password", http.StatusLocked)
+	}
 
 	hasLocal, err1 := hasLocalUsers(ctx)
 	isLocal, err2 := isLocalUser(ctx, uid)
@@ -60,7 +131,6 @@ func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Reques
 		log.Printf("handleLocalLogin: errors: %v; %v", err1, err2)
 		return common.NewHttpError("local user processing error", http.StatusInternalServerError)
 	}
-	var err error
 	if hasLocal && isLocal {
 		c := ctx.Value("zk").(common.IZk)
 
@@ -98,6 +168,7 @@ func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Reques
 		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster Local Login"`)
 		return common.NewHttpError("Invalid username or password", http.StatusUnauthorized)
 	}
+	tryLimitsReset(uid)
 
 	claims := make(jose.Claims)
 	claims.Add("uid", uid)

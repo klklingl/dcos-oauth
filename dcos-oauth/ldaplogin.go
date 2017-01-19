@@ -52,6 +52,11 @@ func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request
 		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster LDAP Login"`)
 		return common.NewHttpError("Not authorized for Ethos cluster access", http.StatusUnauthorized)
 	}
+	if uid == "" {
+		log.Debugf("handleLdapLogin: no user specified")
+		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster Local Login"`)
+		return common.NewHttpError("Invalid LDAP username or password", http.StatusUnauthorized)
+	}
 	log.Printf("Attempting LDAP login for user %s", uid)
 
 	config, err := ldap.ConfigFromFile(ldapConfigFile(ctx))
