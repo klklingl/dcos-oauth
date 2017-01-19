@@ -38,6 +38,20 @@ var (
 		EnvVar: "OAUTH_ALLOW_LOCAL_USERS",
 	}
 
+	flDefaultLocalUser = cli.StringFlag{
+		Name:  keyDefaultLocalUser,
+		Usage: "Default local user",
+		Value: "",
+		EnvVar: "OAUTH_DEFAULT_LOCAL_USER",
+	}
+
+	flDefaultLocalUserHash = cli.StringFlag{
+		Name:  keyDefaultLocalUserHash,
+		Usage: "Initial password hash for the default local user",
+		Value: "",
+		EnvVar: "OAUTH_DEFAULT_LOCAL_USER_HASH",
+	}
+
 	flAllowLdapUsers = cli.StringFlag{
 		Name:  keyAllowLdapUsers,
 		Usage: "Allow LDAP users",

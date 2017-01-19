@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	"golang.org/x/net/context"
@@ -14,10 +15,6 @@ import (
 	"github.com/coreos/go-oidc/jose"
 
 	"github.com/dcos/dcos-oauth/common"
-)
-
-const (
-	defaultLocalUserPassword = "admin"
 )
 
 func verifyLocalUser(ctx context.Context, token jose.JWT) error {
@@ -63,6 +60,7 @@ func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Reques
 		log.Printf("handleLocalLogin: errors: %v; %v", err1, err2)
 		return common.NewHttpError("local user processing error", http.StatusInternalServerError)
 	}
+	var err error
 	if hasLocal && isLocal {
 		c := ctx.Value("zk").(common.IZk)
 
@@ -78,14 +76,27 @@ func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Reques
 			w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster Local Login"`)
 			return common.NewHttpError("Invalid username or password", http.StatusUnauthorized)
 		}
-	} else if uid != defaultLocalUser || password != defaultLocalUserPassword || (hasLocal && !isLocal) {
+	} else if uid == defaultLocalUser(ctx) { // Gets here only when default local user hasn't already been created
+		hash := defaultLocalUserHash(ctx)
+		// In the future may only want to allow a hash instead of a hash or plain text password
+		if strings.HasPrefix(hash, "$") {
+			err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+		} else if len(hash) == 0 || hash != password {
+			err = fmt.Errorf("Password does not match")
+		}
+		if err != nil {
+			log.Debugf("handleLocalLogin: error comparing passwords for user %s: %v", uid, err)
+			w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster Local Login"`)
+			return common.NewHttpError("Invalid username or password", http.StatusUnauthorized)
+		}
+		err = addDefaultLocalUser(ctx)
+		if err != nil {
+			log.Printf("handleLocalLogin: error adding default local user %s: %v", uid, err)
+		}
+	} else {
+		log.Debugf("handleLocalLogin: user not found: %s", uid)
 		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster Local Login"`)
 		return common.NewHttpError("Invalid username or password", http.StatusUnauthorized)
-	} else if !hasLocal { // Should only get here for defaultLocalUser, has correct password, and hasn't been removed from local users
-		err := addDefaultLocalUser(ctx)
-		if err != nil {
-			log.Printf("handleLocalLogin: error adding default local user: %v", err)
-		}
 	}
 
 	claims := make(jose.Claims)

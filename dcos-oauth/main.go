@@ -17,7 +17,8 @@ func main() {
 		ShortName: "s",
 		Usage:     "Serve the API",
 		Flags:     []cli.Flag{common.FlAddr, common.FlZkAddr, flIssuerURL, flClientID, flSecretKeyPath, flSegmentKey,
-				flAllowLocalUsers, flAllowLdapUsers, flLdapConfigFile, flLdapWhitelistOnly},
+				flAllowLocalUsers, flDefaultLocalUser, flDefaultLocalUserHash,
+				flAllowLdapUsers, flLdapConfigFile, flLdapWhitelistOnly},
 		Action:    action(serveAction),
 	}
 
@@ -47,8 +48,27 @@ func serveAction(c *cli.Context) error {
 	ctx = context.WithValue(ctx, keyAllowLocalUsers, bVal)
 	if allowLocalUsers(ctx) {
 		fmt.Println("Local users allowed")
+
+		ctx = context.WithValue(ctx, keyDefaultLocalUser, c.String(keyDefaultLocalUser))
+		uid := defaultLocalUser(ctx)
+		if uid == "" {
+			fmt.Println("No default local user specified")
+		} else {
+			if !validateLocalUser(uid) {
+				return fmt.Errorf("Invalid default local user %s", uid)
+			}
+			fmt.Printf("Using %s as default local user\n", uid)
+
+			// If the default local user already exists, the stored hash will take precedence over this hash
+			hash := c.String(keyDefaultLocalUserHash)
+			if hash == "" {
+				return fmt.Errorf("Setting a default local user requires a password hash")
+			}
+			ctx = context.WithValue(ctx, keyDefaultLocalUserHash, hash)
+		}
 	} else {
 		fmt.Println("Local users NOT allowed")
+		ctx = context.WithValue(ctx, keyDefaultLocalUser, "")
 	}
 
 	bVal, err = strconv.ParseBool(c.String(keyAllowLdapUsers))
@@ -58,19 +78,19 @@ func serveAction(c *cli.Context) error {
 	ctx = context.WithValue(ctx, keyAllowLdapUsers, bVal)
 	if allowLdapUsers(ctx) {
 		fmt.Println("LDAP users allowed")
+
+		ctx = context.WithValue(ctx, keyLdapConfigFile, c.String(keyLdapConfigFile))
+
+		bVal, err = strconv.ParseBool(c.String(keyLdapWhitelistOnly))
+		if err != nil {
+			return err
+		}
+		ctx = context.WithValue(ctx, keyLdapWhitelistOnly, bVal)
+		if ldapWhitelistOnly(ctx) {
+			fmt.Println("LDAP users must be on the whitelist")
+		}
 	} else {
 		fmt.Println("LDAP users NOT allowed")
-	}
-
-	ctx = context.WithValue(ctx, keyLdapConfigFile, c.String(keyLdapConfigFile))
-
-	bVal, err = strconv.ParseBool(c.String(keyLdapWhitelistOnly))
-	if err != nil {
-		return err
-	}
-	ctx = context.WithValue(ctx, keyLdapWhitelistOnly, bVal)
-	if ldapWhitelistOnly(ctx) {
-		fmt.Println("LDAP users must be on the whitelist")
 	}
 
 	return common.ServeCmd(c, ctx, routes)
