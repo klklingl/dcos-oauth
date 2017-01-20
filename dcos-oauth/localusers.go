@@ -98,8 +98,8 @@ func addDefaultLocalUser(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("Default local user created: %s", uid)
 
+	log.Printf("Default local user created: %s", uid)
 	return nil
 }
 
@@ -156,7 +156,6 @@ func getLocalUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *
 	json.NewEncoder(w).Encode(userJson)
 
 	log.Debugf("Local user listed: %+v\n", uid)
-
 	return nil
 }
 
@@ -217,10 +216,10 @@ func postLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 	}
+
+	tryLimitsReset(uid)
 	w.WriteHeader(http.StatusCreated)
-
 	log.Printf("Local user created: %+v", uid)
-
 	return nil
 }
 
@@ -289,10 +288,10 @@ func putLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 	}
+
+	tryLimitsReset(uid)
 	w.WriteHeader(http.StatusAccepted)
-
 	log.Printf("Password changed for local user: %+v", uid)
-
 	return nil
 }
 
