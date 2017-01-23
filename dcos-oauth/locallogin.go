@@ -46,7 +46,7 @@ func tryLimitsCheck(uid string) error {
 
 	// Remove any expired tries and add the current one
 	periodBegin := now.Add(-tryLimitsSamplePeriod)
-	firstKeeper := len(tlUser.tries) - (tryLimitsMaxTries - 1)
+	firstKeeper := len(tlUser.tries) - tryLimitsMaxTries
 	if firstKeeper < 0 {
 		firstKeeper = 0
 	}
@@ -65,7 +65,7 @@ func tryLimitsCheck(uid string) error {
 		tlUser.lockout = time.Time{}
 	}
 
-	if len(tlUser.tries) >= tryLimitsMaxTries {
+	if len(tlUser.tries) > tryLimitsMaxTries {
 		tlUser.lockout = now.Add(tryLimitsLockoutDuration)
 		log.Printf("User %s locked out by too many failed login attempts", uid)
 		return fmt.Errorf("Locked out, too many recent login attempts")
@@ -122,7 +122,8 @@ func handleLocalLogin(ctx context.Context, w http.ResponseWriter, r *http.Reques
 	err := tryLimitsCheck(uid)
 	if err != nil {
 		log.Debugf("handleLocalLogin: hit try limit for user %s: error %v", uid, err)
-		return common.NewHttpError("Invalid username or password", http.StatusLocked)
+		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster Local Login - Locked out"`)
+		return common.NewHttpError("Too many recent login attempts", http.StatusUnauthorized)
 	}
 
 	hasLocal, err1 := hasLocalUsers(ctx)
