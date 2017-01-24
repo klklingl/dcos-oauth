@@ -30,9 +30,7 @@ node('docker') {
             variable: 'AWS_SECRET_ACCESS_KEY'
         ]
     ]) {
-        def s3Image = docker.image("releng-docker-registry.dev.ut1.omniture.com/gauntlet-tools/aws-cli:latest")
-        s3Image.pull()
-        s3Image.inside(
+        awsCli.inside(
             "-e AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY"
         ) {
             sh 'aws s3 cp build/dcos-oauth s3://ethos-utils/dcos/bin/dcos-oauth'
