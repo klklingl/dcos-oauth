@@ -23,7 +23,7 @@ const (
 )
 
 var (
-	ldapUserRe = regexp.MustCompile(`^[a-zA-Z0-9“”._-]{2,}$`)
+	ldapUserRe = regexp.MustCompile(`^[a-zA-Z0-9._-]{2,}$`)
 )
 
 func validateLdapUser(uid string) bool {

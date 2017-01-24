@@ -28,7 +28,7 @@ const (
 )
 
 var (
-	localUserRe = regexp.MustCompile(`^[a-zA-Z0-9“”._-]{2,}$`)
+	localUserRe = regexp.MustCompile(`^[a-zA-Z0-9._-]{2,}$`)
 	bcryptCost = bcrypt.DefaultCost
 )
 
