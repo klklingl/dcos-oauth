@@ -13,6 +13,8 @@ bind_dn = "cn=%s,cn=users,DC=companynet,DC=global,DC=company,DC=com"
 # Search user bind password
 #bind_password = ''
 
+# Email filter, for example "(mail=%s)"
+email_filter = "(mail=%s)"
 # Search filter, for example "(cn=%s)" or "(sAMAccountName=%s)"
 search_filter = "(cn=%s)"
 # An array of base dns to search through

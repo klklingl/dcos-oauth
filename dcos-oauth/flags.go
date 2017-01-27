@@ -72,4 +72,25 @@ var (
 		Value: "false",
 		EnvVar: "OAUTH_LDAP_WHITELIST_ONLY",
 	}
+
+	flLdapGroupsOnly = cli.StringFlag{
+		Name:  keyLdapGroupsOnly,
+		Usage: "LDAP user allowed only when in LDAP group with admin role",
+		Value: "false",
+		EnvVar: "OAUTH_LDAP_GROUPS_ONLY",
+	}
+
+	flLdapCheckOnOauth = cli.StringFlag{
+		Name:  keyLdapCheckOnOauth,
+		Usage: "Perform LDAP group check during Oauth login",
+		Value: "false",
+		EnvVar: "OAUTH_LDAP_CHECK_ON_OAUTH",
+	}
+
+	flOauthAdminGroupsFile = cli.StringFlag{
+		Name: keyAdminGroupsFile,
+		Usage: "CSV file enumerating Oauth groups with admin role",
+		Value: "",
+		EnvVar: "OAUTH_ADMIN_GROUPS_FILE",
+	}
 )

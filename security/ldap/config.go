@@ -23,6 +23,7 @@ type ServerConfig struct {
 	BindDN        string       `toml:"bind_dn"`
 	BindPassword  string       `toml:"bind_password"`
 	Attr          AttributeMap `toml:"attributes"`
+	EmailFilter   string       `toml:"email_filter"`
 	SearchFilter  string       `toml:"search_filter"`
 	SearchBaseDNs []string     `toml:"search_base_dns"`
 	DefaultRole   string       `toml:"default_role"`

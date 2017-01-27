@@ -28,6 +28,7 @@ type User struct {
 	Description string `json:"description,omitempty"`
 	URL         string `json:"url,omitempty"`
 	IsRemote    bool   `json:"is_remote,omitempty"`
+	Type        string `json:"type,omitempty"`
 
 	// a quick hack to allow email notifications
 
@@ -45,11 +46,13 @@ func getUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *comm
 	// users will be an empty list on ErrNoNode
 	var usersJson Users
 	for _, user := range users {
+		val, _, _ := c.Get(fmt.Sprintf("/dcos/users/%s", user))
 		userJson := &User{
 			Uid:         user,
 			Description: user,
 			URL:         "",
 			IsRemote:    false,
+			Type:        string(val),
 		}
 		usersJson.Array = append(usersJson.Array, userJson)
 	}
@@ -131,7 +134,7 @@ func putUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *comm
 	}
 	log.Printf("user: %+v", user)
 
-	err = common.CreateParents(c, path, []byte(uid))
+	err = common.CreateParents(c, path, []byte(markerWhitelist))
 	if err != nil {
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 	}

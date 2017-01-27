@@ -18,7 +18,8 @@ func main() {
 		Usage:     "Serve the API",
 		Flags:     []cli.Flag{common.FlAddr, common.FlZkAddr, flIssuerURL, flClientID, flSecretKeyPath, flSegmentKey,
 				flAllowLocalUsers, flDefaultLocalUser, flDefaultLocalUserHash,
-				flAllowLdapUsers, flLdapConfigFile, flLdapWhitelistOnly},
+				flAllowLdapUsers, flLdapConfigFile, flLdapWhitelistOnly, flLdapGroupsOnly,
+				flLdapCheckOnOauth, flOauthAdminGroupsFile},
 		Action:    action(serveAction),
 	}
 
@@ -79,8 +80,6 @@ func serveAction(c *cli.Context) error {
 	if allowLdapUsers(ctx) {
 		fmt.Println("LDAP users allowed")
 
-		ctx = context.WithValue(ctx, keyLdapConfigFile, c.String(keyLdapConfigFile))
-
 		bVal, err = strconv.ParseBool(c.String(keyLdapWhitelistOnly))
 		if err != nil {
 			return err
@@ -89,9 +88,31 @@ func serveAction(c *cli.Context) error {
 		if ldapWhitelistOnly(ctx) {
 			fmt.Println("LDAP users must be on the whitelist")
 		}
+
+		bVal, err = strconv.ParseBool(c.String(keyLdapGroupsOnly))
+		if err != nil {
+			return err
+		}
+		ctx = context.WithValue(ctx, keyLdapGroupsOnly, bVal)
+		if ldapGroupsOnly(ctx) {
+			fmt.Println("LDAP users must be in an LDAP group with admin role")
+		}
 	} else {
 		fmt.Println("LDAP users NOT allowed")
 	}
+
+	bVal, err = strconv.ParseBool(c.String(keyLdapCheckOnOauth))
+	if err != nil {
+		return err
+	}
+	ctx = context.WithValue(ctx, keyLdapCheckOnOauth, bVal)
+	if ldapCheckOnOauth(ctx) {
+		fmt.Println("LDAP groups checked during Oauth login")
+	}
+
+	ctx = context.WithValue(ctx, keyLdapConfigFile, c.String(keyLdapConfigFile))
+
+	ctx = context.WithValue(ctx, keyAdminGroupsFile, c.String(keyAdminGroupsFile))
 
 	return common.ServeCmd(c, ctx, routes)
 }

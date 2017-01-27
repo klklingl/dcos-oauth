@@ -1,6 +1,6 @@
 ## Additional user types
 
-Two additional user types have been added to dcos-oauth to authorize access to a cluster using either LDAP credentials or cluster defined local user credentials for authentication. These user types mirror the behavior of the regular OAUTH users already used by dcos-oauth but use separate URLs to log in.
+Two additional user types have been added to dcos-oauth to authorize access to a cluster using either LDAP credentials or cluster defined local user credentials for authentication. These user types mirror the behavior of Oauth users already defined by dcos-oauth but use separate URLs to log in.
 
 Environment variables control whether or not these additional user types are enabled for a cluster.
 
@@ -53,8 +53,11 @@ Environment variable | Values | Description
 ------------ | ------------ | -------------
 OAUTH_LDAP_CONFIG_FILE | expects full path and filename, defaults to '/etc/ethos/ldap.toml' | The .toml configuration file that provides LDAP access information
 OAUTH_LDAP_WHITELIST_ONLY | expects true or false, defaults to false | When true, LDAP users must be in the authorized LDAP users list to gain access to the cluster
-OAUTH_DEFAULT_LOCAL_USER | expects string matching regex \`^[a-zA-Z0-9._-]{2,}$\`, defaults to "" | The only authorized local user when no local users have been added to the list. When specified, the default DCOS behavior of automatically authorizing the first OAUTH user to log in to the cluster is ignored
+OAUTH_LDAP_GROUPS_ONLY | expects true or false, defaults to false | When true, LDAP users must be in an LDAP group that has an admin role for the cluster to gain access to the cluster even if the user is in the authorized LDAP users list
+OAUTH_DEFAULT_LOCAL_USER | expects string matching regex \`^[a-zA-Z0-9._-]{2,}$\`, defaults to "" | The only authorized local user when no local users have been added to the list. When specified, the default DCOS behavior of automatically authorizing the first Oauth user to log in to the cluster is ignored
 OAUTH_DEFAULT_LOCAL_USER_HASH | expects a bcrypt hash or a plain text password | The "password" initially associated with the default local user.  This is required when OAUTH_DEFAULT_LOCAL_USER is specified. For security when using a plain text password, the password should be considered temporary and should be changed using PUT decribed above as soon as the cluster is up
+OAUTH_ADMIN_GROUPS_FILE | expects full path and filename, defaults to "" | The CSV file that provides a list of Oauth groups with an admin role for the cluster. When not specified Oauth group checking is ignored which means that only Oauth users that have been specifically added to the Oauth authorized users list can access the cluster
+OAUTH_LDAP_CHECK_ON_OAUTH | expects true or false, defaults to false | When true, Oauth users must be in an LDAP group (looked up by email) that has an admin role for the cluster to gain access to the cluster
 
 ### LDAP .toml configuration file
 
@@ -76,6 +79,8 @@ bind_dn = "cn=%s,cn=users,DC=companynet,DC=global,DC=company,DC=com"
 # Search user bind password
 #bind_password = ''
 
+# Email filter, for example "(mail=%s)"
+email_filter = "(mail=%s)"
 # Search filter, for example "(cn=%s)" or "(sAMAccountName=%s)"
 search_filter = "(cn=%s)"
 # An array of base dns to search through

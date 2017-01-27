@@ -37,6 +37,14 @@ func (a *Provider) GetUser(un string) (security.Principal, error) {
 	return a.mapToOrgUser(user), nil
 }
 
+func (a *Provider) GetUserByEmail(email string) (security.Principal, error) {
+	user, err := a.searchForUserByEmail(email)
+	if err != nil {
+		return nil, err
+	}
+	return a.mapToOrgUser(user), nil
+}
+
 func (a *Provider) ValidateUser(un, pwd string) (security.Principal, error) {
 	if pwd == "" {
 		return nil, security.ErrInvalidCredentials

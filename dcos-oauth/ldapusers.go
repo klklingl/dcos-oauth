@@ -20,6 +20,8 @@ type userInfo struct {
 
 const (
 	zkLdapPath = "/dcos/ldapusers"
+	markerWhitelist = "whitelist"
+	markerGroup = "in group"
 )
 
 var (
@@ -63,7 +65,7 @@ func addLdapUser(ctx context.Context, uid string) error {
 		return fmt.Errorf("LDAP user already exists: %s", uid)
 	}
 
-	err = common.CreateParents(c, path, []byte(uid))
+	err = common.CreateParents(c, path, []byte(markerGroup))
 	if err != nil {
 		return err
 	}
@@ -82,11 +84,13 @@ func getLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *
 	// users will be an empty list on ErrNoNode
 	var usersJson Users
 	for _, user := range users {
+		val, _, _ := c.Get(fmt.Sprintf("%s/%s", zkLdapPath, user))
 		userJson := &User{
 			Uid:         user,
 			Description: user,
 			URL:         "",
 			IsRemote:    false,
+			Type:        string(val),
 		}
 		usersJson.Array = append(usersJson.Array, userJson)
 	}
@@ -134,7 +138,7 @@ func postLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 		return common.NewHttpError("LDAP users are not allowed", http.StatusServiceUnavailable)
 	}
 
-	if !ldapWhitelistOnly(ctx) {
+	if !ldapWhitelistOnly(ctx) && ldapGroupsOnly(ctx) {
 		return common.NewHttpError("LDAP users created automatically at login", http.StatusServiceUnavailable)
 	}
 
@@ -172,7 +176,7 @@ func postLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 		return common.NewHttpError("Already Exists", http.StatusConflict)
 	}
 
-	err = common.CreateParents(c, path, []byte(uid))
+	err = common.CreateParents(c, path, []byte(markerWhitelist))
 	if err != nil {
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 	}
