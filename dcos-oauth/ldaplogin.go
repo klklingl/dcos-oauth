@@ -105,7 +105,7 @@ func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request
 
 	checkNeeded := true
 	if !ldapGroupsOnly(ctx) && isLdap  {
-		isOnWhitelist, err := onWhitelist(ctx, fmt.Sprintf("%s/%s", zkLdapPath, uid))
+		isOnWhitelist, err := onWhitelist(ctx, zkLdapPath, uid)
 		if (isOnWhitelist && err == nil) {
 			checkNeeded = false
 		}
@@ -184,12 +184,12 @@ func ldapGroupsCheck(ctx context.Context, uid string) error {
 
 	var zkPath string
 	if isOauth {
-		zkPath = fmt.Sprintf("/dcos/users/%s", uid)
+		zkPath = "/dcos/users"
 	} else {
-		zkPath = fmt.Sprintf("%s/%s", zkLdapPath, uid)
+		zkPath = zkLdapPath
 	}
 
-	isOnWhitelist, err := onWhitelist(ctx, zkPath)
+	isOnWhitelist, err := onWhitelist(ctx, zkPath, uid)
 	if err != nil {
 		return err
 	}
@@ -230,15 +230,17 @@ func ldapGroupsCheck(ctx context.Context, uid string) error {
 	return nil
 }
 
-func onWhitelist(ctx context.Context, zkPath string) (bool, error) {
+func onWhitelist(ctx context.Context, path, uid string) (bool, error) {
 	c := ctx.Value("zk").(common.IZk)
+	zkPath := fmt.Sprintf("%s/%s", path, uid)
 	exists, _, err := c.Exists(zkPath)
 	if err == nil && exists {
 		val, _, err := c.Get(zkPath)
 		if err != nil {
 			log.Printf("onWhitelist: error getting zk data: %v", err)
 		} else {
-			if strings.Compare(string(val), markerWhitelist) == 0 {
+			if strings.Compare(string(val), markerWhitelist) == 0 ||
+				strings.Compare(string(val), uid) == 0 { // Compare to uid for backwards compatibility
 				return true, nil
 			}
 		}
