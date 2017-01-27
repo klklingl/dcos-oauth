@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	"golang.org/x/net/context"
@@ -15,6 +16,10 @@ import (
 	"github.com/dcos/dcos-oauth/common"
 	"github.com/dcos/dcos-oauth/security/ldap"
 	"github.com/dcos/dcos-oauth/security"
+)
+
+var (
+	ldapConfig *ldap.Config
 )
 
 func verifyLdapUser(ctx context.Context, token jose.JWT) error {
@@ -58,14 +63,17 @@ func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request
 		return common.NewHttpError("Invalid LDAP username or password", http.StatusUnauthorized)
 	}
 	log.Printf("Attempting LDAP login for user %s", uid)
+	var err error
 
-	config, err := ldap.ConfigFromFile(ldapConfigFile(ctx))
-	if err != nil {
-		log.Printf("Config: error: %v", err)
-		return common.NewHttpError("LDAP reading config failed", http.StatusInternalServerError)
+	if ldapConfig == nil {
+		ldapConfig, err = ldap.ConfigFromFile(ldapConfigFile(ctx))
+		if err != nil {
+			log.Printf("Config: error: %v", err)
+			return common.NewHttpError("LDAP reading config failed", http.StatusInternalServerError)
+		}
 	}
 
-	provider := ldap.NewProvider(config)
+	provider := ldap.NewProvider(ldapConfig)
 	if err := provider.Initialize("ldap"); err != nil {
 		log.Printf("Initialize: error: %v", err)
 		return common.NewHttpError("LDAP initialization failed", http.StatusInternalServerError)
@@ -95,11 +103,20 @@ func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request
 		return common.NewHttpError("LDAP user unauthorized", http.StatusUnauthorized)
 	}
 
-	if !(ldapuser.IsInRole(string(security.ROLE_ADMIN)) ||
-		(len(ldapuser.GetRoles()) == 0 && config.Server.DefaultRole == string(security.ROLE_ADMIN))) {
-		log.Printf("handleLdapLogin: LDAP user %s is not a member of an Admin group for this cluster", uid)
-		w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster LDAP Login"`)
-		return common.NewHttpError("LDAP user unauthorized", http.StatusUnauthorized)
+	checkNeeded := true
+	if !ldapGroupsOnly(ctx) && isLdap  {
+		isOnWhitelist, err := onWhitelist(ctx, fmt.Sprintf("%s/%s", zkLdapPath, uid))
+		if (isOnWhitelist && err == nil) {
+			checkNeeded = false
+		}
+	}
+	if checkNeeded {
+		if !(ldapuser.IsInRole(string(security.ROLE_ADMIN)) ||
+			(len(ldapuser.GetRoles()) == 0 && ldapConfig.Server.DefaultRole == string(security.ROLE_ADMIN))) {
+			log.Printf("handleLdapLogin: LDAP user %s is not a member of an LDAP group with admin role for this cluster", uid)
+			w.Header().Set("WWW-Authenticate", `Basic realm="Ethos Cluster LDAP Login"`)
+			return common.NewHttpError("LDAP user unauthorized", http.StatusUnauthorized)
+		}
 	}
 
 	claims := make(jose.Claims)
@@ -160,4 +177,71 @@ func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request
 
 	log.Printf("Successful LDAP login for user %s", uid)
 	return nil
+}
+
+func ldapGroupsCheck(ctx context.Context, uid string) error {
+	isOauth := strings.ContainsAny(uid, "@")
+
+	var zkPath string
+	if isOauth {
+		zkPath = fmt.Sprintf("/dcos/users/%s", uid)
+	} else {
+		zkPath = fmt.Sprintf("%s/%s", zkLdapPath, uid)
+	}
+
+	isOnWhitelist, err := onWhitelist(ctx, zkPath)
+	if err != nil {
+		return err
+	}
+	if isOnWhitelist {
+		// No need to check groups if the user was specifically put on the list
+		return nil
+	}
+
+	if ldapConfig == nil {
+		ldapConfig, err = ldap.ConfigFromFile(ldapConfigFile(ctx))
+		if err != nil {
+			return err
+		}
+	}
+
+	provider := ldap.NewProvider(ldapConfig)
+	if err := provider.Initialize("ldap"); err != nil {
+		return err
+	}
+
+	defer provider.Close()
+
+	var ldapuser security.Principal
+	if isOauth {
+		ldapuser, err = provider.GetUserByEmail(uid)
+	} else {
+		ldapuser, err = provider.GetUser(uid)
+	}
+	if err != nil {
+		return err
+	}
+
+	if !(ldapuser.IsInRole(string(security.ROLE_ADMIN)) ||
+		(len(ldapuser.GetRoles()) == 0 && ldapConfig.Server.DefaultRole == string(security.ROLE_ADMIN))) {
+		return fmt.Errorf("handleLogin: LDAP user %s is not a member of an LDAP group with admin role for this cluster", uid)
+	}
+
+	return nil
+}
+
+func onWhitelist(ctx context.Context, zkPath string) (bool, error) {
+	c := ctx.Value("zk").(common.IZk)
+	exists, _, err := c.Exists(zkPath)
+	if err == nil && exists {
+		val, _, err := c.Get(zkPath)
+		if err != nil {
+			log.Printf("onWhitelist: error getting zk data: %v", err)
+		} else {
+			if strings.Compare(string(val), markerWhitelist) == 0 {
+				return true, nil
+			}
+		}
+	}
+	return false, err
 }

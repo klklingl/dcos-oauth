@@ -3,11 +3,15 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"encoding/csv"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
+	"os"
+	"bufio"
+	"io"
 
+	log "github.com/Sirupsen/logrus"
 	"golang.org/x/net/context"
 
 	"github.com/coreos/go-oidc/jose"
@@ -15,6 +19,10 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 
 	"github.com/dcos/dcos-oauth/common"
+)
+
+var (
+	oauthAdminGroups map[string]bool
 )
 
 type loginRequest struct {
@@ -105,33 +113,50 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 	if len(users) == 0 && defaultLocalUser(ctx) == "" { // No users yet and no default local user was specified
 		// create first user
 		log.Printf("creating first user %v", uid)
-		err = common.CreateParents(c, userPath, []byte(uid))
+		err = common.CreateParents(c, userPath, []byte(markerGroup))
 		if err != nil {
 			return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 		}
 	}
 
-	exists, _, err := c.Exists(userPath)
+	var isOauth, isLocal, isLdap bool
+	isOauth, _, err = c.Exists(userPath)
 	if err != nil {
 		log.Printf("handleLogin: error: %v", err)
 		return common.NewHttpError("User unauthorized", http.StatusUnauthorized)
 	}
-	if !exists {
-		isLocal, err := isLocalUser(ctx, uid)
+	if !isOauth {
+		isLocal, err = isLocalUser(ctx, uid)
 		if err != nil {
 			log.Printf("handleLogin: error: %v", err)
 			return common.NewHttpError("User unauthorized", http.StatusUnauthorized)
 		}
 		if !isLocal {
-			isLdap, err := isLdapUser(ctx, uid)
+			isLdap, err = isLdapUser(ctx, uid)
 			if err != nil {
 				log.Printf("handleLogin: error: %v", err)
 				return common.NewHttpError("User unauthorized", http.StatusUnauthorized)
 			}
-			if !isLdap {
-				return common.NewHttpError("User unauthorized", http.StatusUnauthorized)
-			}
 		}
+	}
+
+	if (!isLocal && ldapCheckOnOauth(ctx)) || isLdap {
+		err = ldapGroupsCheck(ctx, uid)
+		if err != nil {
+			log.Printf("handleLogin: LDAP groups check error: %v", err)
+			return common.NewHttpError("User unauthorized", http.StatusUnauthorized)
+		}
+	} else if !isLocal {
+		err = oauthGroupsCheck(ctx, uid, nil)
+		if err != nil {
+			log.Printf("handleLogin: Oauth groups check error: %v", err)
+			return common.NewHttpError("User unauthorized", http.StatusUnauthorized)
+		}
+	}
+
+	if !isOauth && !isLocal && !isLdap {
+		// Passed the group check so add new oauth user to the authorized list
+		err = common.CreateParents(c, userPath, []byte(markerGroup))
 	}
 
 	claims.Add("uid", uid)
@@ -200,4 +225,53 @@ func handleLogout(ctx context.Context, w http.ResponseWriter, r *http.Request) *
 	}
 
 	return nil
+}
+
+func oauthGroupsCheck(ctx context.Context, uid string, userGroups []string) error {
+	isOnWhitelist, err := onWhitelist(ctx, fmt.Sprintf("/dcos/users/%s", uid))
+	if err != nil {
+		return err
+	}
+	if isOnWhitelist {
+		// No need to check groups if the user was specifically put on the list
+		return nil
+	}
+
+	// Get the list of groups that are allowed
+	if oauthAdminGroups == nil {
+		oauthAdminGroups = make(map[string]bool)
+		if oauthAdminGroupsFile(ctx) != "" {
+			f, err := os.Open(oauthAdminGroupsFile(ctx))
+			if err != nil {
+				log.Printf("Error opening oauth admin groups file (%s): %v", oauthAdminGroupsFile(ctx), err)
+			} else {
+				r := csv.NewReader(bufio.NewReader(f))
+				for {
+					record, err := r.Read()
+					if err == io.EOF { // Stop at EOF.
+						break
+					} else if err != nil {
+						log.Printf("Error parsing content of oauth admin groups file (%s): %v", oauthAdminGroupsFile(ctx), err)
+						break
+					}
+					for _, group := range record {
+						if len(group) != 0 {
+							oauthAdminGroups[group] = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Go through all groups for this user until a matching one is found
+	if len(oauthAdminGroups) != 0 {
+		for _, userGroup := range userGroups {
+			if oauthAdminGroups[userGroup] {
+				return nil
+			}
+		}
+	}
+
+	return fmt.Errorf("User %s is not a member of an oauth group with admin role for this cluster", uid)
 }

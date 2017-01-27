@@ -11,6 +11,9 @@ const (
 	keyAllowLdapUsers = "allow-ldap-users"
 	keyLdapConfigFile = "ldap-config-file"
 	keyLdapWhitelistOnly = "ldap-whitelist-only"
+	keyLdapGroupsOnly = "ldap-groups-only"
+	keyLdapCheckOnOauth = "ldap-check-on-oauth"
+	keyAdminGroupsFile = "admin-groups-file"
 )
 
 func allowLocalUsers(ctx context.Context) bool {
@@ -36,3 +39,16 @@ func ldapConfigFile(ctx context.Context) string {
 func ldapWhitelistOnly(ctx context.Context) bool {
 	return ctx.Value(keyLdapWhitelistOnly).(bool)
 }
+
+func ldapGroupsOnly(ctx context.Context) bool {
+	return ctx.Value(keyLdapGroupsOnly).(bool)
+}
+
+func ldapCheckOnOauth(ctx context.Context) bool {
+	return ctx.Value(keyLdapCheckOnOauth).(bool)
+}
+
+func oauthAdminGroupsFile(ctx context.Context) string {
+	return ctx.Value(keyAdminGroupsFile).(string)
+}
+

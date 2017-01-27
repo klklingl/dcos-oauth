@@ -112,7 +112,15 @@ func (a *Provider) first(search *ldap.SearchRequest) (searchResult *ldap.SearchR
 	return
 }
 
+func (a *Provider) searchForUserByEmail(email string) (*User, error) {
+	return a.searchForUserByFilter(strings.Replace(a.server.EmailFilter, "%s", email, -1))
+}
+
 func (a *Provider) searchForUser(username string) (*User, error) {
+	return a.searchForUserByFilter(strings.Replace(a.server.SearchFilter, "%s", username, -1))
+}
+
+func (a *Provider) searchForUserByFilter(filter string) (*User, error) {
 	searchReq := &ldap.SearchRequest{
 		Scope:        ldap.ScopeWholeSubtree,
 		DerefAliases: ldap.NeverDerefAliases,
@@ -123,7 +131,7 @@ func (a *Provider) searchForUser(username string) (*User, error) {
 			a.server.Attr.Name,
 			a.server.Attr.MemberOf,
 		},
-		Filter: strings.Replace(a.server.SearchFilter, "%s", username, -1),
+		Filter: filter,
 	}
 	searchResult, err := a.first(searchReq)
 	if err != nil {
