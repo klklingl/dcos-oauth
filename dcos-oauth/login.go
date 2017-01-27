@@ -113,7 +113,7 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 	if len(users) == 0 && defaultLocalUser(ctx) == "" { // No users yet and no default local user was specified
 		// create first user
 		log.Printf("creating first user %v", uid)
-		err = common.CreateParents(c, userPath, []byte(markerGroup))
+		err = common.CreateParents(c, userPath, []byte(markerWhitelist))
 		if err != nil {
 			return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 		}
@@ -228,7 +228,7 @@ func handleLogout(ctx context.Context, w http.ResponseWriter, r *http.Request) *
 }
 
 func oauthGroupsCheck(ctx context.Context, uid string, userGroups []string) error {
-	isOnWhitelist, err := onWhitelist(ctx, fmt.Sprintf("/dcos/users/%s", uid))
+	isOnWhitelist, err := onWhitelist(ctx, "/dcos/users", uid)
 	if err != nil {
 		return err
 	}
@@ -264,12 +264,14 @@ func oauthGroupsCheck(ctx context.Context, uid string, userGroups []string) erro
 		}
 	}
 
+	if len(oauthAdminGroups) == 0 {
+		return fmt.Errorf("User %s is not authorized for this cluster", uid)
+	}
+
 	// Go through all groups for this user until a matching one is found
-	if len(oauthAdminGroups) != 0 {
-		for _, userGroup := range userGroups {
-			if oauthAdminGroups[userGroup] {
-				return nil
-			}
+	for _, userGroup := range userGroups {
+		if oauthAdminGroups[userGroup] {
+			return nil
 		}
 	}
 
