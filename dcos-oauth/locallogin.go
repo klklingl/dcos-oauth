@@ -22,31 +22,43 @@ type tryLimitsUser struct {
 	tries   []time.Time  // Times of most recent login attempts
 }
 
+type tryLimits struct {
+	lockoutDuration time.Duration
+	samplePeriod time.Duration
+	maxTries int
+	users map[string]*tryLimitsUser
+}
+
 const (
-	tryLimitsLockoutDuration = time.Duration(30 * time.Minute)
-	tryLimitsSamplePeriod = time.Duration(5 * time.Minute)
-	tryLimitsMaxTries = 6
+	defaultLockoutDuration = time.Duration(30 * time.Minute)
+	defaultSamplePeriod = time.Duration(5 * time.Minute)
+	defaultMaxTries = 6
 )
 
 var (
-	tryLimitsTracker = make(map[string]*tryLimitsUser)
+	tryLimitsTracker = &tryLimits{
+		lockoutDuration: defaultLockoutDuration,
+		samplePeriod: defaultSamplePeriod,
+		maxTries: defaultMaxTries,
+		users: make(map[string]*tryLimitsUser),
+	}
 )
 
 func tryLimitsCheck(uid string) error {
 	now := time.Now().UTC()
 
-	tlUser, exists := tryLimitsTracker[uid]
+	tlUser, exists := tryLimitsTracker.users[uid]
 	if !exists {
 		tlUser = &tryLimitsUser{
 			lockout: time.Time{},
 			tries: nil,
 		}
-		tryLimitsTracker[uid] = tlUser
+		tryLimitsTracker.users[uid] = tlUser
 	}
 
 	// Remove any expired tries and add the current one
-	periodBegin := now.Add(-tryLimitsSamplePeriod)
-	firstKeeper := len(tlUser.tries) - tryLimitsMaxTries
+	periodBegin := now.Add(-tryLimitsTracker.samplePeriod)
+	firstKeeper := len(tlUser.tries) - tryLimitsTracker.maxTries
 	if firstKeeper < 0 {
 		firstKeeper = 0
 	}
@@ -65,8 +77,8 @@ func tryLimitsCheck(uid string) error {
 		tlUser.lockout = time.Time{}
 	}
 
-	if len(tlUser.tries) > tryLimitsMaxTries {
-		tlUser.lockout = now.Add(tryLimitsLockoutDuration)
+	if len(tlUser.tries) > tryLimitsTracker.maxTries {
+		tlUser.lockout = now.Add(tryLimitsTracker.lockoutDuration)
 		log.Printf("User %s locked out by too many failed login attempts", uid)
 		return fmt.Errorf("Locked out, too many recent login attempts")
 	}
@@ -74,7 +86,7 @@ func tryLimitsCheck(uid string) error {
 }
 
 func tryLimitsReset(uid string) {
-	delete(tryLimitsTracker, uid)
+	delete(tryLimitsTracker.users, uid)
 }
 
 func verifyLocalUser(ctx context.Context, token jose.JWT) error {

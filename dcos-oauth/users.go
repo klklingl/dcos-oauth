@@ -15,6 +15,11 @@ import (
 	"github.com/dcos/dcos-oauth/common"
 )
 
+var uidFromUrl = func(r *http.Request) string {
+	// uid is already unescaped here
+	return mux.Vars(r)["uid"]
+}
+
 var httpClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
@@ -63,8 +68,7 @@ func getUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *comm
 }
 
 func getUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	// uid is already unescaped here
-	uid := mux.Vars(r)["uid"]
+	uid := uidFromUrl(r)
 	var err error
 	isLocal := false
 	isLdap := false
@@ -81,17 +85,17 @@ func getUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *commo
 		}
 	}
 	if !isLocal && !isLdap && !common.ValidateEmail(uid) {
-		return common.NewHttpError("invalid email", http.StatusInternalServerError)
+		return common.NewHttpError("invalid email", http.StatusBadRequest)
 	}
 
 	c := ctx.Value("zk").(common.IZk)
 
 	path := fmt.Sprintf("/dcos/users/%s", uid)
-	exists, _, err := c.Exists(path)
+	isOauth, _, err := c.Exists(path)
 	if err != nil {
 		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
 	}
-	if !exists && !isLocal && !isLdap {
+	if !isOauth && !isLocal && !isLdap {
 		log.Printf("getUser: %v doesn't exist", path)
 		return common.NewHttpError("User Not Found", http.StatusNotFound)
 	}
@@ -110,9 +114,9 @@ func getUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *commo
 }
 
 func putUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	uid := mux.Vars(r)["uid"]
+	uid := uidFromUrl(r)
 	if !common.ValidateEmail(uid) {
-		return common.NewHttpError("invalid email", http.StatusInternalServerError)
+		return common.NewHttpError("invalid email", http.StatusBadRequest)
 	}
 
 	c := ctx.Value("zk").(common.IZk)
@@ -228,9 +232,9 @@ func newUserEmail(segmentKey string, uid string, user *User) {
 }
 
 func deleteUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	uid := mux.Vars(r)["uid"]
+	uid := uidFromUrl(r)
 	if !common.ValidateEmail(uid) {
-		return common.NewHttpError("invalid email", http.StatusInternalServerError)
+		return common.NewHttpError("invalid email", http.StatusBadRequest)
 	}
 
 	c := ctx.Value("zk").(common.IZk)

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/gorilla/mux"
 	"github.com/samuel/go-zookeeper/zk"
 	"golang.org/x/net/context"
 	"golang.org/x/crypto/bcrypt"
@@ -33,7 +32,7 @@ var (
 )
 
 func validateLocalUser(uid string) bool {
-	return localUserRe.MatchString(uid)
+	return uid != "" && localUserRe.MatchString(uid)
 }
 
 func hasLocalUsers(ctx context.Context) (bool, error) {
@@ -53,7 +52,7 @@ func isLocalUser(ctx context.Context, uid string) (bool, error) {
 	}
 
 	if hasLocal, err := hasLocalUsers(ctx); !hasLocal || err != nil {
-		return uid == defaultLocalUser(ctx) && err == nil, err
+		return err == nil && uid == defaultLocalUser(ctx), err
 	}
 
 	c := ctx.Value("zk").(common.IZk)
@@ -128,10 +127,9 @@ func getLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 }
 
 func getLocalUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	// uid is already unescaped here
-	uid := mux.Vars(r)["uid"]
+	uid := uidFromUrl(r)
 	if !validateLocalUser(uid) {
-		return common.NewHttpError("invalid local user", http.StatusInternalServerError)
+		return common.NewHttpError("invalid local user", http.StatusBadRequest)
 	}
 
 	c := ctx.Value("zk").(common.IZk)
@@ -176,13 +174,13 @@ func postLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request)
 	if info.Username != "" {
 		uid = info.Username
 	} else {
-		uid = mux.Vars(r)["uid"]
+		uid = uidFromUrl(r)
 	}
 	if uid == "" {
 		return common.NewHttpError("Local user required", http.StatusBadRequest)
 	}
 	if !validateLocalUser(uid) {
-		return common.NewHttpError("invalid local user", http.StatusInternalServerError)
+		return common.NewHttpError("invalid local user", http.StatusBadRequest)
 	}
 	log.Debugf("Creating local user: %+v", uid)
 
@@ -228,7 +226,7 @@ func putLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 		return common.NewHttpError("Local users are not allowed", http.StatusServiceUnavailable)
 	}
 
-	uid := mux.Vars(r)["uid"]
+	uid := uidFromUrl(r)
 	if !validateLocalUser(uid) {
 		return common.NewHttpError(fmt.Sprintf("invalid local user: %s", uid), http.StatusBadRequest)
 	}
@@ -296,9 +294,9 @@ func putLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 }
 
 func deleteLocalUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	uid := mux.Vars(r)["uid"]
+	uid := uidFromUrl(r)
 	if !validateLocalUser(uid) {
-		return common.NewHttpError("invalid local user", http.StatusInternalServerError)
+		return common.NewHttpError("invalid local user", http.StatusBadRequest)
 	}
 
 	c := ctx.Value("zk").(common.IZk)
