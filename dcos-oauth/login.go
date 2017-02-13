@@ -102,7 +102,7 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 		return common.NewHttpError("invalid email claim", http.StatusBadRequest)
 	}
 
-	c := ctx.Value("zk").(*zk.Conn)
+	c := ctx.Value("zk").(common.IZk)
 
 	users, _, err := c.Children("/dcos/users")
 	if err != nil && err != zk.ErrNoNode {

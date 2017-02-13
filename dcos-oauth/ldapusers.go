@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/gorilla/mux"
 	"github.com/samuel/go-zookeeper/zk"
 	"golang.org/x/net/context"
 
@@ -62,7 +61,7 @@ func addLdapUser(ctx context.Context, uid string) error {
 		return err
 	}
 	if exists {
-		return fmt.Errorf("LDAP user already exists: %s", uid)
+		return nil
 	}
 
 	err = common.CreateParents(c, path, []byte(markerGroup))
@@ -102,9 +101,9 @@ func getLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *
 
 func getLdapUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
 	// uid is already unescaped here
-	uid := mux.Vars(r)["uid"]
+	uid := uidFromUrl(r)
 	if !validateLdapUser(uid) {
-		return common.NewHttpError("invalid LDAP user", http.StatusInternalServerError)
+		return common.NewHttpError("invalid LDAP user", http.StatusBadRequest)
 	}
 
 	c := ctx.Value("zk").(common.IZk)
@@ -139,7 +138,7 @@ func postLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	}
 
 	if !ldapWhitelistOnly(ctx) && ldapGroupsOnly(ctx) {
-		return common.NewHttpError("LDAP users created automatically at login", http.StatusServiceUnavailable)
+		return common.NewHttpError("LDAP users created automatically at login", http.StatusBadRequest)
 	}
 
 	var info userInfo
@@ -154,13 +153,13 @@ func postLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 	if info.Username != "" {
 		uid = info.Username
 	} else {
-		uid = mux.Vars(r)["uid"]
+		uid = uidFromUrl(r)
 	}
 	if uid == "" {
 		return common.NewHttpError("LDAP user required", http.StatusBadRequest)
 	}
 	if !validateLdapUser(uid) {
-		return common.NewHttpError("invalid LDAP user", http.StatusInternalServerError)
+		return common.NewHttpError("invalid LDAP user", http.StatusBadRequest)
 	}
 	log.Debugf("Creating LDAP user: %+v", uid)
 
@@ -188,9 +187,9 @@ func postLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) 
 }
 
 func deleteLdapUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	uid := mux.Vars(r)["uid"]
+	uid := uidFromUrl(r)
 	if !validateLdapUser(uid) {
-		return common.NewHttpError("invalid LDAP user", http.StatusInternalServerError)
+		return common.NewHttpError("invalid LDAP user", http.StatusBadRequest)
 	}
 
 	c := ctx.Value("zk").(common.IZk)

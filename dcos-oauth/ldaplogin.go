@@ -22,6 +22,18 @@ var (
 	ldapConfig *ldap.Config
 )
 
+var newLdapProvider = func(ctx context.Context) (security.MembershipProvider, error) {
+	if ldapConfig == nil {
+		var err error
+		ldapConfig, err = ldap.ConfigFromFile(ldapConfigFile(ctx))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return ldap.NewProvider(ldapConfig), nil
+}
+
 func verifyLdapUser(ctx context.Context, token jose.JWT) error {
 	claims, err := token.Claims()
 	if err != nil {
@@ -65,16 +77,14 @@ func handleLdapLogin(ctx context.Context, w http.ResponseWriter, r *http.Request
 	log.Printf("Attempting LDAP login for user %s", uid)
 	var err error
 
-	if ldapConfig == nil {
-		ldapConfig, err = ldap.ConfigFromFile(ldapConfigFile(ctx))
-		if err != nil {
-			log.Printf("Config: error: %v", err)
-			return common.NewHttpError("LDAP reading config failed", http.StatusInternalServerError)
-		}
+	provider, err := newLdapProvider(ctx)
+	if err != nil {
+		log.Printf("LDAP initial setup error: %v", err)
+		return common.NewHttpError("LDAP initial setup failed", http.StatusInternalServerError)
 	}
 
-	provider := ldap.NewProvider(ldapConfig)
-	if err := provider.Initialize("ldap"); err != nil {
+	err = provider.Initialize("ldap")
+	if err != nil {
 		log.Printf("Initialize: error: %v", err)
 		return common.NewHttpError("LDAP initialization failed", http.StatusInternalServerError)
 	}
@@ -198,15 +208,13 @@ func ldapGroupsCheck(ctx context.Context, uid string) error {
 		return nil
 	}
 
-	if ldapConfig == nil {
-		ldapConfig, err = ldap.ConfigFromFile(ldapConfigFile(ctx))
-		if err != nil {
-			return err
-		}
+	provider, err := newLdapProvider(ctx)
+	if err != nil {
+		return err
 	}
 
-	provider := ldap.NewProvider(ldapConfig)
-	if err := provider.Initialize("ldap"); err != nil {
+	err = provider.Initialize("ldap")
+	if err != nil {
 		return err
 	}
 
@@ -224,7 +232,7 @@ func ldapGroupsCheck(ctx context.Context, uid string) error {
 
 	if !(ldapuser.IsInRole(string(security.ROLE_ADMIN)) ||
 		(len(ldapuser.GetRoles()) == 0 && ldapConfig.Server.DefaultRole == string(security.ROLE_ADMIN))) {
-		return fmt.Errorf("handleLogin: LDAP user %s is not a member of an LDAP group with admin role for this cluster", uid)
+		return fmt.Errorf("LDAP user %s is not a member of an LDAP group with admin role for this cluster", uid)
 	}
 
 	return nil
@@ -235,7 +243,8 @@ func onWhitelist(ctx context.Context, path, uid string) (bool, error) {
 	zkPath := fmt.Sprintf("%s/%s", path, uid)
 	exists, _, err := c.Exists(zkPath)
 	if err == nil && exists {
-		val, _, err := c.Get(zkPath)
+		var val []byte
+		val, _, err = c.Get(zkPath)
 		if err != nil {
 			log.Printf("onWhitelist: error getting zk data: %v", err)
 		} else {

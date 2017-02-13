@@ -19,6 +19,7 @@ type MembershipProvider interface {
 	Provider
 	Name() string
 	GetUser(un string) (Principal, error)
+	GetUserByEmail(email string) (Principal, error)
 	ValidateUser(un string, pw string) (Principal, error)
 }
 

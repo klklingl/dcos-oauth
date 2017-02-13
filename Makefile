@@ -17,6 +17,9 @@ docker:
 test: docker
 	go test ./...
 
+unittest: docker
+	go test ./dcos-oauth ./security/...
+
 .PHONY: install save docker test
 
 DIRS=$(subst $(space),$(newline),$(shell go list ./... | grep -v /vendor/))
