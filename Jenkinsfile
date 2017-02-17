@@ -8,7 +8,7 @@ node('docker') {
     def buildImage = docker.build("dcos-oauth-build:${env.BUILD_TAG}", '-f JenkinsDockerfile .')
     buildImage.inside {
       sh 'ln -s $PWD /go/src/github.com/dcos/dcos-oauth'
-      sh 'cd /go/src/github.com/dcos/dcos-oauth; make install'
+      sh 'cd /go/src/github.com/dcos/dcos-oauth; make test && make install'
       sh 'cp /go/bin/dcos-oauth ./build/dcos-oauth'
     }
 
