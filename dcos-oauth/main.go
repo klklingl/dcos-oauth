@@ -4,6 +4,7 @@ import (
 	"os"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/codegangsta/cli"
 	"golang.org/x/net/context"
@@ -50,7 +51,7 @@ func serveAction(c *cli.Context) error {
 	if allowLocalUsers(ctx) {
 		fmt.Println("Local users allowed")
 
-		ctx = context.WithValue(ctx, keyDefaultLocalUser, c.String(keyDefaultLocalUser))
+		ctx = context.WithValue(ctx, keyDefaultLocalUser, strings.Trim(c.String(keyDefaultLocalUser), `"`))
 		uid := defaultLocalUser(ctx)
 		if uid == "" {
 			fmt.Println("No default local user specified")
@@ -61,7 +62,7 @@ func serveAction(c *cli.Context) error {
 			fmt.Printf("Using %s as default local user\n", uid)
 
 			// If the default local user already exists, the stored hash will take precedence over this hash
-			hash := c.String(keyDefaultLocalUserHash)
+			hash := strings.Trim(c.String(keyDefaultLocalUserHash), `"`)
 			if hash == "" {
 				return fmt.Errorf("Setting a default local user requires a password hash")
 			}

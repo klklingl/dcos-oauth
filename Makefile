@@ -17,10 +17,10 @@ docker:
 test: docker
 	go test ./...
 
-unittest: docker
+unittest:
 	go test ./dcos-oauth ./security/...
 
-.PHONY: install save docker test
+.PHONY: install save docker test unittest
 
 DIRS=$(subst $(space),$(newline),$(shell go list ./... | grep -v /vendor/))
 TEST=$(subst $(space),$(newline),$(shell go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.Dir}}{{end}}' ./...))
