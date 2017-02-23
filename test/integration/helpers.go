@@ -11,16 +11,32 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"net"
+	"errors"
 )
+func waitForPortAvailability(timeout time.Duration, port int) error {
+	tm := time.After(timeout)
+	ipAndPort := fmt.Sprint("127.0.0.1:", port)
+	for {
+		if conn, err := net.Dial("tcp", ipAndPort); err == nil {
+			return conn.Close()
+		}
+		select {
+		case <-tm:
+			return errors.New("Connection to "+ipAndPort+" timed out")
+		case <-time.After(100 * time.Millisecond):
+			continue
+		}
+	}
+}
 
 func startZk() error {
-	cmd := exec.Command("docker", "run", "-d", "--net=host", "--name=dcos-zk", "jplock/zookeeper")
+	cmd := exec.Command("sudo", "docker", "run", "-d", "--net=host", "--name=dcos-zk", "jplock/zookeeper")
 	err := cmd.Run()
 	if err != nil {
 		return err
 	}
-	time.Sleep(200 * time.Millisecond)
-	return nil
+	return waitForPortAvailability(10*time.Second, 2181)
 }
 
 func startOAuthAPI() error {
@@ -29,17 +45,16 @@ func startOAuthAPI() error {
 		return err
 	}
 	defer os.Remove(secretKeyFile.Name())
-	cmd := exec.Command("docker", "run", "-d", "-v="+secretKeyFile.Name()+":/var/lib/dcos/auth-token-secret", "--net=host", "--name=dcos-oauth", "dcos-services", "/go/bin/dcos-oauth", "serve")
+	cmd := exec.Command("sudo", "docker", "run", "-d", "-v="+secretKeyFile.Name()+":/var/lib/dcos/auth-token-secret", "--net=host", "--name=dcos-oauth", "dcos-services", "/go/bin/dcos-oauth", "serve")
 	err = cmd.Run()
 	if err != nil {
 		return err
 	}
-	time.Sleep(200 * time.Millisecond)
-	return nil
+	return waitForPortAvailability(10*time.Second, 8101)
 }
 
 func startConfigAPI() error {
-	cmd := exec.Command("docker", "run", "-d", "--net=host", "--name=dcos-config", "dcos-services", "/go/bin/dcos-config", "serve")
+	cmd := exec.Command("sudo", "docker", "run", "-d", "--net=host", "--name=dcos-config", "dcos-services", "/go/bin/dcos-config", "serve")
 	err := cmd.Run()
 	if err != nil {
 		return err
@@ -49,7 +64,7 @@ func startConfigAPI() error {
 }
 
 func cleanup(service string) {
-	cmd := exec.Command("docker", "rm", "-f", service, "dcos-zk")
+	cmd := exec.Command("sudo", "docker", "rm", "-f", service, "dcos-zk")
 	err := cmd.Run()
 	if err != nil {
 		log.Fatal(err)

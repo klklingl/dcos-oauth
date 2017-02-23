@@ -1,2 +1,5 @@
 FROM golang:1.7
 RUN mkdir -p /go/src/github.com/dcos && chmod 777 /go/src/github.com/dcos
+RUN curl https://get.docker.com/builds/Linux/x86_64/docker-1.9.1.tgz -o docker.tgz && tar xzvf docker.tgz && cp usr/local/bin/docker /usr/bin || : #Ignoring copy error
+RUN apt-get update && apt-get install sudo && apt-get clean
+RUN useradd -u 1000 tester1 && echo "tester1 ALL = (ALL) NOPASSWD: ALL" > /etc/sudoers.d/tester1-sudo && useradd -u 50618 tester2 && echo "tester2 ALL = (ALL) NOPASSWD: ALL" > /etc/sudoers.d/tester2-sudo

@@ -17,7 +17,7 @@ func TestUsers(t *testing.T) {
 	exampleEmail := "test@domain.com"
 	encoded := url.QueryEscape(exampleEmail)
 
-	getResponse := "{\"array\":[{\"uid\":\"" + exampleEmail + "\",\"description\":\"" + exampleEmail + "\"}]}"
+	getResponse := "{\"array\":[{\"uid\":\"" + exampleEmail + "\",\"description\":\"" + exampleEmail + "\",\"type\":\"whitelist\"}]}"
 
 	bodyGetUsers, err := send("GET", "/acs/api/v1/users", 200, nil)
 	assert.NoError(err)

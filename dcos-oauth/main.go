@@ -36,9 +36,12 @@ func serveAction(c *cli.Context) error {
 
 	secretKey, err := common.ReadLine(c.String("secret-key-path"))
 	if err != nil {
-		return err
+		ctx = context.WithValue(ctx, "secret-key", []byte("temporary"))
+		//TODO: Need better handling when file content isn't available or valid
+		//return err
+	} else {
+		ctx = context.WithValue(ctx, "secret-key", secretKey)
 	}
-	ctx = context.WithValue(ctx, "secret-key", secretKey)
 
 	// TODO not used everywhere yet
 	ctx = context.WithValue(ctx, "zk-path", "/dcos/users")

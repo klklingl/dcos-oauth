@@ -6,10 +6,12 @@ node('docker') {
     sh 'rm -Rf build; mkdir -p build'
 
     def buildImage = docker.build("dcos-oauth-build:${env.BUILD_TAG}", '-f JenkinsDockerfile .')
-    buildImage.inside {
-      sh 'ln -s $PWD /go/src/github.com/dcos/dcos-oauth'
-      sh 'cd /go/src/github.com/dcos/dcos-oauth; make unittest && make install'
-      sh 'cp /go/bin/dcos-oauth ./build/dcos-oauth'
+    buildImage.inside(
+        '-v /var/run/docker.sock:/var/run/docker.sock --net=host'
+     ){
+        sh 'ln -s $PWD /go/src/github.com/dcos/dcos-oauth'
+        sh 'cd /go/src/github.com/dcos/dcos-oauth; make test && make install'
+        sh 'cp /go/bin/dcos-oauth ./build/dcos-oauth'
     }
 
     archiveArtifacts 'build/dcos-oauth'
