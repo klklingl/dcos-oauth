@@ -97,7 +97,7 @@ func getUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *commo
 	}
 	if !isOauth && !isLocal && !isLdap {
 		log.Printf("getUser: %v doesn't exist", path)
-		return common.NewHttpError("User Not Found", http.StatusNotFound)
+		return common.NewHttpError("Oauth User Not Found", http.StatusNotFound)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

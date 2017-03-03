@@ -14,6 +14,12 @@ import (
 	"net"
 	"errors"
 )
+
+type basicAuth struct {
+	username string
+	password string
+}
+
 func waitForPortAvailability(timeout time.Duration, port int) error {
 	tm := time.After(timeout)
 	ipAndPort := fmt.Sprint("127.0.0.1:", port)
@@ -39,13 +45,28 @@ func startZk() error {
 	return waitForPortAvailability(10*time.Second, 2181)
 }
 
-func startOAuthAPI() error {
+func startOAuthAPI(additionalDockerArgs []string) error {
 	secretKeyFile, err := ioutil.TempFile("", "dcos-oauth-integration-test")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(secretKeyFile.Name())
-	cmd := exec.Command("sudo", "docker", "run", "-d", "-v="+secretKeyFile.Name()+":/var/lib/dcos/auth-token-secret", "--net=host", "--name=dcos-oauth", "dcos-services", "/go/bin/dcos-oauth", "serve")
+
+	allArgs := append(
+		[]string{
+			"docker",
+			"run",
+			"-d",
+			"-v="+secretKeyFile.Name()+":/var/lib/dcos/auth-token-secret",
+			"--net=host",
+			"--name=dcos-oauth",
+		},
+		additionalDockerArgs...)
+	allArgs = append(allArgs,
+			"dcos-services",
+			"/go/bin/dcos-oauth",
+			"serve")
+	cmd := exec.Command("sudo", allArgs...)
 	err = cmd.Run()
 	if err != nil {
 		return err
@@ -81,7 +102,7 @@ func encodeData(data interface{}) (*bytes.Buffer, error) {
 	return params, nil
 }
 
-func send(method, route string, statusExpected int, obj interface{}) (string, error) {
+func send(method, route string, statusExpected int, obj interface{}, bAuth *basicAuth) (string, error) {
 	body, err := encodeData(obj)
 	if err != nil {
 		return "", err
@@ -90,6 +111,9 @@ func send(method, route string, statusExpected int, obj interface{}) (string, er
 	req, err := http.NewRequest(method, "http://127.0.0.1:8101"+route, body)
 	if err != nil {
 		return "", err
+	}
+	if bAuth != nil {
+		req.SetBasicAuth(bAuth.username, bAuth.password)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
